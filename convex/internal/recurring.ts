@@ -17,7 +17,7 @@ export const processRecurringTransactions = internalAction({
           });
           // Refetch latest nextDueDate after mutation advanced it
           const latest = await ctx.runQuery(internal.internal.getRecurringTransactionsToProcess);
-          const updated = latest.find(t => t._id === transaction._id);
+          const updated = latest.find((t: typeof transaction) => t._id === transaction._id);
           transaction.nextDueDate = updated?.nextDueDate;
           iterations += 1;
         }

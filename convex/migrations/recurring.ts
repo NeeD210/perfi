@@ -170,8 +170,8 @@ export const runRecurringCatchup = internalAction({
             targetDate: transaction.nextDueDate,
           });
           generatedTransactions += 1;
-          const latest = await ctx.runQuery(internal.internal.getRecurringTransactionsToProcess);
-          const updated = latest.find((t) => t._id === transaction._id);
+        const latest = await ctx.runQuery(internal.internal.getRecurringTransactionsToProcess);
+        const updated = latest.find((t: typeof transaction) => t._id === transaction._id);
           transaction.nextDueDate = updated?.nextDueDate;
           iterations += 1;
         }

@@ -1,7 +1,17 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  accountTypeValidator,
+  directionValidator,
+  entryStatusValidator,
+  linkTypeValidator,
+  frequencyValidator,
+  scopeTypeValidator,
+  sourceTypeValidator,
+} from "./ledger/validators";
 
 export default defineSchema({
+  // Existing tables
   users: defineTable({
     auth0Id: v.string(),
     email: v.string(),
@@ -93,4 +103,213 @@ export default defineSchema({
   .index("by_expenseId", ["expenseId"])
   .index("by_user_dueDate_softdelete", ["userId", "dueDate", "softdelete"])
   .index("by_user_softdelete_dueDate", ["userId", "softdelete", "dueDate"]),
+
+  // Ledger schema for double-entry accounting
+
+  accounts: defineTable({
+    userId: v.id("users"),
+    description: v.string(),
+    accountType: accountTypeValidator,
+    parentAccountId: v.optional(v.id("accounts")),
+    defaultCurrency: v.optional(v.string()), // ISO 4217, defaults to "ARS"
+    creationTime: v.number(),
+    softdelete: v.boolean(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_type", ["userId", "accountType"])
+    .index("by_parentAccountId", ["parentAccountId"]),
+
+  journal_entries: defineTable({
+    userId: v.id("users"),
+    parentEntryId: v.optional(v.id("journal_entries")),
+    date: v.number(), // effective date (epoch ms)
+    updateTime: v.number(),
+    softdelete: v.boolean(),
+    deletedAt: v.optional(v.number()),
+    description: v.string(),
+    status: entryStatusValidator,
+    sourceType: sourceTypeValidator,
+    sourceId: v.optional(v.string()),
+    idempotencyKey: v.optional(v.string()),
+    linkType: v.optional(linkTypeValidator),
+    installmentNumber: v.optional(v.number()),
+    totalInstallments: v.optional(v.number()),
+    createdBy: v.string(),
+    updatedBy: v.optional(v.string()),
+  })
+    .index("by_user_date", ["userId", "date"])
+    .index("by_user_status_date", ["userId", "status", "date"])
+    .index("by_sourceType_sourceId", ["sourceType", "sourceId"]),
+
+  journal_lines: defineTable({
+    journalEntryId: v.id("journal_entries"),
+    userId: v.id("users"),
+    accountId: v.id("accounts"),
+    direction: directionValidator,
+    currencyCode: v.string(), // ISO 4217
+    exchangeRateId: v.optional(v.id("exchange_rates")), // Official market rate reference
+    exchangeRate: v.optional(v.number()), // Actual rate user received (takes precedence)
+    amount: v.number(), // signed integer in minor units
+    amountBaseCurrency: v.number(), // signed integer in base currency
+    entryDate: v.number(), // denormalized for indexing
+    installmentNumber: v.optional(v.number()),
+    totalInstallments: v.optional(v.number()),
+  })
+    .index("by_entryId", ["journalEntryId"])
+    .index("by_accountId_date", ["accountId", "entryDate"])
+    .index("by_user_accountId_date", ["userId", "accountId", "entryDate"]),
+
+  exchange_rates: defineTable({
+    pairCurrency: v.string(), // "USD/ARS"
+    rate: v.number(), // scaled integer (base→quote)
+    inverseRate: v.optional(v.number()),
+    date: v.number(), // epoch ms (UTC day boundary)
+    source: v.string(), // provider ID
+  })
+    .index("by_pair_date_source", ["pairCurrency", "date", "source"]),
+
+  cards: defineTable({
+    accountId: v.id("accounts"), // PK & FK
+    userId: v.id("users"),
+    closingDay: v.number(), // 1-31
+    dueDate: v.number(), // 1-31
+    softdelete: v.boolean(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_accountId", ["accountId"])
+    .index("by_user", ["userId"]),
+
+  debts: defineTable({
+    accountId: v.id("accounts"), // PK & FK
+    userId: v.id("users"),
+    interestRate: v.optional(v.number()), // advisory only
+    softdelete: v.boolean(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_accountId", ["accountId"])
+    .index("by_user", ["userId"]),
+
+  budgets: defineTable({
+    userId: v.id("users"),
+    accountId: v.id("accounts"),
+    amount: v.number(), // integer in base currency
+    frequency: frequencyValidator,
+    nextDueDate: v.number(),
+    endDate: v.optional(v.number()),
+    creationTime: v.number(),
+    softdelete: v.boolean(),
+    deletedAt: v.optional(v.number()),
+    scopeType: scopeTypeValidator,
+    scopeRefs: v.optional(v.array(v.id("accounts"))),
+  })
+    .index("by_user", ["userId"])
+    .index("by_accountId", ["accountId"]),
+
+  budget_lines: defineTable({
+    budgetId: v.id("budgets"),
+    userId: v.id("users"),
+    accountId: v.id("accounts"),
+    amount: v.number(),
+    startDate: v.number(),
+    endDate: v.number(),
+    softdelete: v.boolean(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_budgetId", ["budgetId"])
+    .index("by_user", ["userId"]),
+
+  recurring_entries: defineTable({
+    userId: v.id("users"),
+    description: v.string(),
+    frequency: frequencyValidator,
+    creationTime: v.number(),
+    // Anchor for monthly/semestral/yearly stepping to avoid drift
+    anchorDay: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+    status: v.union(v.literal("active"), v.literal("paused")),
+    nextDueDate: v.number(),
+    softdelete: v.boolean(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"]) 
+    .index("by_user_status_nextDueDate", ["userId", "status", "nextDueDate"]),
+
+  recurring_lines: defineTable({
+    recurringId: v.id("recurring_entries"),
+    userId: v.id("users"),
+    accountId: v.id("accounts"),
+    direction: directionValidator,
+    // Line currency for amount minor units (temporarily optional for backfill)
+    currencyCode: v.optional(v.string()),
+    exchangeRateId: v.optional(v.id("exchange_rates")),
+    amount: v.number(),
+    softdelete: v.boolean(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_recurringId", ["recurringId"])
+    .index("by_user", ["userId"]),
+
+  // Migration progress tracking
+  migration_progress: defineTable({
+    userId: v.id("users"),
+    migrationType: v.union(
+      v.literal("account_seeding"),
+      v.literal("transaction_backfill"),
+      v.literal("installment_backfill")
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    lastProcessedId: v.optional(v.string()), // ID to resume from
+    recordsProcessed: v.number(),
+    totalRecords: v.number(),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+  })
+    .index("by_user_type", ["userId", "migrationType"])
+    .index("by_user_status", ["userId", "status"]),
+
+  // Legacy data mappings for migrations
+  payment_type_mappings: defineTable({
+    userId: v.id("users"),
+    paymentTypeId: v.id("paymentTypes"),
+    accountId: v.id("accounts"),
+    createdAt: v.number(),
+  })
+    .index("by_user_paymentType", ["userId", "paymentTypeId"])
+    .index("by_account", ["accountId"]),
+
+  category_mappings: defineTable({
+    userId: v.id("users"),
+    categoryId: v.id("categories"),
+    accountId: v.id("accounts"),
+    createdAt: v.number(),
+  })
+    .index("by_user_category", ["userId", "categoryId"])
+    .index("by_account", ["accountId"]),
+
+  expense_mappings: defineTable({
+    userId: v.id("users"),
+    expenseId: v.id("expenses"),
+    journalEntryId: v.id("journal_entries"),
+    createdAt: v.number(),
+  })
+    .index("by_user_expense", ["userId", "expenseId"])
+    .index("by_journal_entry", ["journalEntryId"]),
+
+  // Mapping from legacy recurringTransactions to ledger recurring_entries
+  recurring_template_mappings: defineTable({
+    userId: v.id("users"),
+    legacyRecurringId: v.id("recurringTransactions"),
+    recurringEntryId: v.id("recurring_entries"),
+    createdAt: v.number(),
+  })
+    .index("by_user_legacyRecurring", ["userId", "legacyRecurringId"]) 
+    .index("by_recurringEntryId", ["recurringEntryId"]),
 });
