@@ -63,7 +63,7 @@ export function PaymentTypeList() {
   const [editingType, setEditingType] = useState<PaymentType | null>(null);
 
   const paymentTypes = useQuery(api.expenses.getPaymentTypes) ?? [];
-  const removePaymentType = useMutation(api.expenses.removePaymentType);
+  const updatePaymentTypes = useMutation(api.expenses.updatePaymentTypes);
 
   // Memoize sorted payment types
   const sortedPaymentTypes = useMemo(() => 
@@ -74,14 +74,25 @@ export function PaymentTypeList() {
   const handleDelete = useCallback(async (id: Id<"paymentTypes">) => {
     if (window.confirm("Are you sure you want to delete this payment type?")) {
       try {
-        await removePaymentType({ id });
+        // Remove payment type from list using updatePaymentTypes
+        const updatedPaymentTypes = paymentTypes
+          .filter(pt => pt._id !== id)
+          .map(pt => ({
+            _id: pt._id,  // ✅ Preserve IDs
+            name: pt.name,
+            isCredit: pt.isCredit ?? false,
+            closingDay: pt.closingDay,
+            dueDay: pt.dueDay,
+          }));
+        
+        await updatePaymentTypes({ paymentTypes: updatedPaymentTypes });
         setEditingType(null);
       } catch (error) {
         console.error("Error deleting payment type:", error);
         alert("Error deleting payment type. Please try again.");
       }
     }
-  }, [removePaymentType]);
+  }, [updatePaymentTypes, paymentTypes]);
 
   const handleEdit = useCallback((type: PaymentType) => {
     setEditingType(type);

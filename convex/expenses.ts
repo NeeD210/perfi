@@ -1,6 +1,17 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
+import { LEDGER_DUAL_WRITE_ENABLED } from "./ledger/dualWriteConfig";
+import {
+  getCategoryAccountMapping,
+  getPaymentTypeAccountMapping,
+  createJournalEntry,
+  createDoubleEntryLines,
+  createInstallmentEntries,
+  toMinorARS,
+  ensureDefaultCashMapping,
+} from "./ledger/dualWriteUtils";
+import { logDualWriteError, logDualWriteSkip } from "./ledger/errorTracking";
 import { addMonths, setDate } from "date-fns";
 import { internal } from "./_generated/api";
 import { calculateNextDueDateForPaymentType } from "./lib/scheduling";
@@ -98,14 +109,102 @@ export const addExpense = mutation({
 
     // Generate payment schedules if payment type is provided
     if (args.paymentTypeId) {
-      await ctx.runMutation(internal.internal.expenses.generatePaymentSchedules, {
-        expenseId,
-        firstDueDate: nextDueDate!,
-        totalAmount: args.amount,
-        totalInstallments: args.cuotas,
-        userId,
-        paymentTypeId: args.paymentTypeId,
-      });
+      void (await ctx.runMutation(
+        internal.internal.expenses.generatePaymentSchedules,
+        {
+          expenseId,
+          firstDueDate: nextDueDate!,
+          totalAmount: args.amount,
+          totalInstallments: args.cuotas,
+          userId,
+          paymentTypeId: args.paymentTypeId,
+        } as any,
+      ));
+    }
+
+    // Dual-write to ledger
+    if (LEDGER_DUAL_WRITE_ENABLED) {
+      try {
+        const idempotencyKey = `expense_dual_write_${expenseId}`;
+        
+        // Check for existing entry to prevent duplicates
+        const existingEntry = await ctx.db
+          .query("journal_entries")
+          .withIndex("by_idempotencyKey", (q: any) => q.eq("idempotencyKey", idempotencyKey))
+          .first();
+        
+        if (existingEntry) {
+          logDualWriteSkip("addExpense", "Journal entry already exists", String(expenseId));
+        } else {
+          const categoryMapping = await getCategoryAccountMapping(ctx, userId as Id<"users">, args.categoryId);
+          let paymentMapping = args.paymentTypeId
+            ? await getPaymentTypeAccountMapping(ctx, userId as Id<"users">, args.paymentTypeId)
+            : null;
+          // Fallback to default cash mapping when payment type mapping is absent
+          if (!paymentMapping) {
+            const ensured = await ensureDefaultCashMapping(ctx, userId as Id<"users">);
+            paymentMapping = { accountId: ensured.accountId } as const;
+          }
+
+          // With fallback above, paymentMapping is guaranteed here
+            const amountARS = toMinorARS(args.amount);
+            const isIncome = args.transactionType === "income";
+
+            const entryId = await createJournalEntry({
+              ctx,
+              userId: userId as Id<"users">,
+              date: args.date,
+              description: `${args.description}`,
+              status: "posted",
+              sourceType: isIncome ? "income" : "expense",
+              sourceId: expenseId,
+              idempotencyKey,
+              createdBy: userId as Id<"users">,
+            });
+
+          const debitAccountId = isIncome ? paymentMapping.accountId : categoryMapping.accountId;
+          const creditAccountId = isIncome ? categoryMapping.accountId : paymentMapping.accountId;
+
+            await createDoubleEntryLines({
+              ctx,
+              entryId,
+              userId: userId as Id<"users">,
+              debitAccountId,
+              creditAccountId,
+              amountARS,
+              date: args.date,
+            });
+
+            // Installments planned entries
+            if (args.cuotas > 1 && args.paymentTypeId) {
+              await createInstallmentEntries(ctx, {
+                parentEntryId: entryId,
+                totalAmount: amountARS,
+                totalInstallments: args.cuotas,
+                paymentAccountId: paymentMapping.accountId,
+                expenseOrIncomeAccountId: categoryMapping.accountId,
+                userId: userId as Id<"users">,
+                startDate: args.date,
+                isIncome,
+              });
+            }
+        }
+      } catch (err) {
+        logDualWriteError({
+          operation: "addExpense",
+          expenseId: String(expenseId),
+          userId: String(userId),
+          errorMessage: err instanceof Error ? err.message : String(err),
+          errorStack: err instanceof Error ? err.stack : undefined,
+          timestamp: Date.now(),
+          context: {
+            amount: args.amount,
+            categoryId: String(args.categoryId),
+            paymentTypeId: args.paymentTypeId ? String(args.paymentTypeId) : undefined,
+            transactionType: args.transactionType,
+          },
+        });
+      }
     }
 
     return expenseId;
@@ -247,6 +346,19 @@ export const getPaymentTypes = query({
   },
 });
 
+/**
+ * @deprecated Use updatePaymentTypes instead. This mutation does not implement dual-write
+ * to the ledger system and will create orphaned payment types without ledger structures.
+ * 
+ * Migration: Call updatePaymentTypes with the full array of payment types including the new one.
+ * Example:
+ * ```
+ * const existing = await ctx.runQuery(api.expenses.getPaymentTypes);
+ * await ctx.runMutation(api.expenses.updatePaymentTypes, {
+ *   paymentTypes: [...existing, newPaymentType]
+ * });
+ * ```
+ */
 export const addPaymentType = mutation({
   args: {
     name: v.string(),
@@ -255,6 +367,8 @@ export const addPaymentType = mutation({
     dueDay: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    console.warn("⚠️ DEPRECATED: addPaymentType is deprecated and does not implement dual-write. Use updatePaymentTypes instead.");
+    
     const userId = await getAuthenticatedUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
 
@@ -279,11 +393,26 @@ export const addPaymentType = mutation({
   },
 });
 
+/**
+ * @deprecated Use updatePaymentTypes instead. This mutation does not cascade
+ * soft-delete to ledger structures (accounts, cards), leaving orphaned records.
+ * 
+ * Migration: Call updatePaymentTypes with the filtered array excluding the deleted payment type.
+ * Example:
+ * ```
+ * const existing = await ctx.runQuery(api.expenses.getPaymentTypes);
+ * await ctx.runMutation(api.expenses.updatePaymentTypes, {
+ *   paymentTypes: existing.filter(pt => pt._id !== idToDelete)
+ * });
+ * ```
+ */
 export const removePaymentType = mutation({
   args: {
     id: v.id("paymentTypes"),
   },
   handler: async (ctx, args) => {
+    console.warn("⚠️ DEPRECATED: removePaymentType is deprecated and does not cascade to ledger. Use updatePaymentTypes instead.");
+    
     const userId = await getAuthenticatedUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
 
@@ -299,13 +428,18 @@ export const removePaymentType = mutation({
 export const updateCategories = mutation({
   args: {
     categories: v.array(v.object({
+      _id: v.optional(v.id("categories")),  // Include ID to track updates
       name: v.string(),
       transactionType: v.string(),
     })),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const userId = await getAuthenticatedUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
+    
+    // Import feature flag
+    const { LEDGER_DUAL_WRITE_ENABLED } = await import("./ledger/dualWriteConfig");
     
     // Get existing categories
     const existingCategories = await ctx.db
@@ -315,57 +449,224 @@ export const updateCategories = mutation({
     
     // Soft delete categories that are no longer in the list
     for (const category of existingCategories) {
-      if (!args.categories.some(c => c.name === category.name && c.transactionType === category.transactionType)) {
+      // Match by ID if provided, otherwise by name + transactionType
+      const stillExists = args.categories.some(c => 
+        c._id ? c._id === category._id : (c.name === category.name && c.transactionType === category.transactionType)
+      );
+      
+      if (!stillExists) {
         await ctx.db.patch(category._id, { softdelete: true });
+        
+        // Cascade soft-delete to ledger (dual-write)
+        if (LEDGER_DUAL_WRITE_ENABLED) {
+          try {
+            const categoryMapping = await ctx.db
+              .query("category_mappings")
+              .withIndex("by_user_category", (q) => q.eq("userId", userId).eq("categoryId", category._id))
+              .first();
+            
+            if (categoryMapping) {
+              await ctx.db.patch(categoryMapping.accountId, {
+                softdelete: true,
+                deletedAt: Date.now(),
+              });
+            }
+          } catch (error) {
+            console.error("Failed to cascade delete to ledger for category:", category.name, error);
+            // Continue - don't fail entire operation if ledger update fails
+          }
+        }
       }
     }
     
-    // Create new categories OR reactivate soft-deleted ones
+    // Create, update, or reactivate categories
     for (const category of args.categories) {
-      const existing = existingCategories.find(c => 
-        c.name === category.name && 
-        c.transactionType === category.transactionType
-      );
-      if (!existing) {
-        await ctx.db.insert("categories", {
+      // Match by ID first (if provided), then by name + transactionType
+      const existing = category._id
+        ? existingCategories.find(c => c._id === category._id)
+        : existingCategories.find(c => 
+            c.name === category.name && 
+            c.transactionType === category.transactionType
+          );
+      
+      if (existing && !existing.softdelete) {
+        // ✅ UPDATE existing active category (including name/type changes)
+        await ctx.db.patch(existing._id, {
+          name: category.name,  // ✅ Allow name updates
+          transactionType: category.transactionType,  // ✅ Allow type changes
+          softdelete: false,
+        });
+        
+        // Update ledger structures (dual-write)
+        if (LEDGER_DUAL_WRITE_ENABLED) {
+          try {
+            const categoryMapping = await ctx.db
+              .query("category_mappings")
+              .withIndex("by_user_category", (q) => q.eq("userId", userId).eq("categoryId", existing._id))
+              .first();
+            
+            if (categoryMapping) {
+              const existingAccount = await ctx.db.get(categoryMapping.accountId);
+              const newAccountType = category.transactionType === "income" ? "income" : "expense";
+              
+              // ✅ Update account description and/or type if changed
+              if (existingAccount && 
+                  (existingAccount.description !== category.name || existingAccount.accountType !== newAccountType)) {
+                await ctx.db.patch(categoryMapping.accountId, {
+                  description: category.name,
+                  accountType: newAccountType,
+                });
+              }
+            }
+          } catch (error) {
+            console.error("Failed to update ledger structures for category:", category.name, error);
+            // Continue - don't fail entire operation if ledger update fails
+          }
+        }
+      } else if (existing && existing.softdelete) {
+        // Reactivate soft-deleted category
+        await ctx.db.patch(existing._id, {
+          name: category.name,  // Update name in case it changed
+          transactionType: category.transactionType,  // Update type in case it changed
+          softdelete: false,
+        });
+        
+        // Reactivate associated account (dual-write)
+        if (LEDGER_DUAL_WRITE_ENABLED) {
+          try {
+            const categoryMapping = await ctx.db
+              .query("category_mappings")
+              .withIndex("by_user_category", (q) => q.eq("userId", userId).eq("categoryId", existing._id))
+              .first();
+            
+            if (categoryMapping) {
+              const newAccountType = category.transactionType === "income" ? "income" : "expense";
+              
+              await ctx.db.patch(categoryMapping.accountId, {
+                description: category.name,  // Update description
+                accountType: newAccountType,  // Update type
+                softdelete: false,
+                deletedAt: undefined,
+              });
+            }
+          } catch (error) {
+            console.error("Failed to reactivate ledger structures for category:", category.name, error);
+            // Continue - don't fail entire operation if ledger update fails
+          }
+        }
+      } else {
+        // Create new category
+        const categoryId = await ctx.db.insert("categories", {
           name: category.name,
           userId,
           transactionType: category.transactionType,
           softdelete: false,
         });
-      } else if (existing.softdelete) {
-        await ctx.db.patch(existing._id, { softdelete: false });
+        
+        // Create ledger structures (dual-write)
+        if (LEDGER_DUAL_WRITE_ENABLED) {
+          try {
+            // Determine account type from transaction type
+            const accountType = category.transactionType === "income" ? "income" : "expense";
+            
+            const accountId = await ctx.db.insert("accounts", {
+              userId,
+              description: category.name,
+              accountType,
+              creationTime: Date.now(),
+              softdelete: false,
+            });
+            
+            // Create mapping
+            await ctx.db.insert("category_mappings", {
+              userId,
+              categoryId,
+              accountId,
+              createdAt: Date.now(),
+            });
+          } catch (error) {
+            console.error("Failed to create ledger structures for category:", category.name, error);
+            // Rollback: delete the category we just created
+            await ctx.db.delete(categoryId);
+            throw new Error(`Failed to create category with ledger integration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
       }
     }
+    return null;
   },
 });
 
 export const updatePaymentTypes = mutation({
   args: {
     paymentTypes: v.array(v.object({
+      _id: v.optional(v.id("paymentTypes")),  // Include ID to track updates
       name: v.string(),
       isCredit: v.optional(v.boolean()),
       closingDay: v.optional(v.number()),
       dueDay: v.optional(v.number()),
     })),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const userId = await getAuthenticatedUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
-
-    // Get existing payment types
-    const existingTypes = await ctx.db
+    
+    // Get existing payment types (including soft-deleted for reactivation)
+    const allTypes = await ctx.db
       .query("paymentTypes")
-      .withIndex("by_user_softdelete", q => q.eq("userId", userId).eq("softdelete", false))
+      .withIndex("by_user", q => q.eq("userId", userId))
       .collect();
+    
+    // Filter to active types for deletion logic
+    const existingTypes = allTypes.filter(t => !t.softdelete);
 
     // Soft delete types that are no longer in the list
     for (const type of existingTypes) {
-      if (!args.paymentTypes.some(t => t.name === type.name)) {
+      // Match by ID if provided, otherwise by name
+      const stillExists = args.paymentTypes.some(t => 
+        t._id ? t._id === type._id : t.name === type.name
+      );
+      
+      if (!stillExists) {
         await ctx.db.patch(type._id, { 
           softdelete: true,
           deletedAt: Date.now()
         });
+        
+        // Cascade soft-delete to ledger (dual-write)
+        if (LEDGER_DUAL_WRITE_ENABLED) {
+          try {
+            const paymentMapping = await ctx.db
+              .query("payment_type_mappings")
+              .withIndex("by_user_paymentType", (q) => q.eq("userId", userId).eq("paymentTypeId", type._id))
+              .first();
+            
+            if (paymentMapping) {
+              // Soft-delete account
+              await ctx.db.patch(paymentMapping.accountId, {
+                softdelete: true,
+                deletedAt: Date.now(),
+              });
+              
+              // Soft-delete card if it exists (for credit cards)
+              const card = await ctx.db
+                .query("cards")
+                .withIndex("by_accountId", (q) => q.eq("accountId", paymentMapping.accountId))
+                .first();
+              
+              if (card) {
+                await ctx.db.patch(card._id, {
+                  softdelete: true,
+                  deletedAt: Date.now(),
+                });
+              }
+            }
+          } catch (error) {
+            console.error("Failed to cascade delete to ledger for payment type:", type.name, error);
+            // Continue - don't fail entire operation if ledger update fails
+          }
+        }
       }
     }
 
@@ -381,17 +682,135 @@ export const updatePaymentTypes = mutation({
         }
       }
 
-      const existingType = existingTypes.find(t => t.name === type.name);
-      if (existingType) {
-        // Update existing type
+      // Check all types (including soft-deleted) by ID first, then by name
+      const existingType = type._id 
+        ? allTypes.find(t => t._id === type._id)
+        : allTypes.find(t => t.name === type.name);
+      
+      if (existingType && !existingType.softdelete) {
+        // Update existing active type (including name change)
         await ctx.db.patch(existingType._id, {
+          name: type.name,  // ✅ Allow name updates
           isCredit: type.isCredit ?? false,
           closingDay: type.closingDay,
           dueDay: type.dueDay,
         });
+        
+        // Update ledger structures (dual-write)
+        if (LEDGER_DUAL_WRITE_ENABLED) {
+          try {
+            const paymentMapping = await ctx.db
+              .query("payment_type_mappings")
+              .withIndex("by_user_paymentType", (q) => q.eq("userId", userId).eq("paymentTypeId", existingType._id))
+              .first();
+            
+            if (paymentMapping) {
+              const existingAccount = await ctx.db.get(paymentMapping.accountId);
+              const newAccountType = type.isCredit ? "liability" : "asset";
+              
+              // ✅ Update account description and/or type if changed
+              if (existingAccount && 
+                  (existingAccount.description !== type.name || existingAccount.accountType !== newAccountType)) {
+                await ctx.db.patch(paymentMapping.accountId, {
+                  description: type.name,
+                  accountType: newAccountType,  // ✅ Convert asset ↔ liability
+                });
+              }
+              
+              // Update or create/delete card based on credit status
+              const existingCard = await ctx.db
+                .query("cards")
+                .withIndex("by_accountId", (q) => q.eq("accountId", paymentMapping.accountId))
+                .first();
+              
+              if (type.isCredit && !existingCard) {
+                // Create card for newly credit payment type
+                await ctx.db.insert("cards", {
+                  accountId: paymentMapping.accountId,
+                  userId,
+                  closingDay: type.closingDay!,
+                  dueDate: type.dueDay!,
+                  softdelete: false,
+                });
+              } else if (type.isCredit && existingCard) {
+                // Update existing card
+                await ctx.db.patch(existingCard._id, {
+                  closingDay: type.closingDay!,
+                  dueDate: type.dueDay!,
+                  softdelete: false,
+                });
+              } else if (!type.isCredit && existingCard) {
+                // Soft-delete card if no longer credit
+                await ctx.db.patch(existingCard._id, {
+                  softdelete: true,
+                  deletedAt: Date.now(),
+                });
+              }
+            }
+          } catch (error) {
+            console.error("Failed to update ledger structures for payment type:", type.name, error);
+            // Continue - don't fail entire operation if ledger update fails
+          }
+        }
+      } else if (existingType && existingType.softdelete) {
+        // Reactivate soft-deleted payment type
+        await ctx.db.patch(existingType._id, {
+          softdelete: false,
+          deletedAt: undefined,
+          isCredit: type.isCredit ?? false,
+          closingDay: type.closingDay,
+          dueDay: type.dueDay,
+        });
+        
+        // Reactivate associated ledger structures (dual-write)
+        if (LEDGER_DUAL_WRITE_ENABLED) {
+          try {
+            const paymentMapping = await ctx.db
+              .query("payment_type_mappings")
+              .withIndex("by_user_paymentType", (q) => q.eq("userId", userId).eq("paymentTypeId", existingType._id))
+              .first();
+            
+            if (paymentMapping) {
+              // Reactivate account
+              await ctx.db.patch(paymentMapping.accountId, {
+                softdelete: false,
+                deletedAt: undefined,
+              });
+              
+              // Reactivate or create card if credit
+              if (type.isCredit && type.closingDay && type.dueDay) {
+                const existingCard = await ctx.db
+                  .query("cards")
+                  .withIndex("by_accountId", (q) => q.eq("accountId", paymentMapping.accountId))
+                  .first();
+                
+                if (existingCard) {
+                  await ctx.db.patch(existingCard._id, {
+                    softdelete: false,
+                    deletedAt: undefined,
+                    closingDay: type.closingDay,
+                    dueDate: type.dueDay,
+                  });
+                } else {
+                  // Create card if it didn't exist before
+                  await ctx.db.insert("cards", {
+                    accountId: paymentMapping.accountId,
+                    userId,
+                    closingDay: type.closingDay,
+                    dueDate: type.dueDay,
+                    softdelete: false,
+                  });
+                }
+              }
+            }
+          } catch (error) {
+            console.error("Failed to reactivate ledger structures for payment type:", type.name, error);
+            // Continue - don't fail entire operation if ledger update fails
+          }
+        }
       } else {
-        // Create new type
-        await ctx.db.insert("paymentTypes", {
+        // Create new payment type (legacy)
+        const paymentTypeId = await ctx.db.insert("paymentTypes", {
           name: type.name,
           userId,
           isCredit: type.isCredit ?? false,
@@ -399,8 +818,49 @@ export const updatePaymentTypes = mutation({
           dueDay: type.dueDay,
           softdelete: false,
         });
+        
+        // Create ledger structures (dual-write)
+        if (LEDGER_DUAL_WRITE_ENABLED) {
+          try {
+            // Determine account type: liability for credit cards, asset for cash/debit
+            const accountType = type.isCredit ? "liability" : "asset";
+            
+            const accountId = await ctx.db.insert("accounts", {
+              userId,
+              description: type.name,
+              accountType,
+              creationTime: Date.now(),
+              softdelete: false,
+            });
+            
+            // Create mapping
+            await ctx.db.insert("payment_type_mappings", {
+              userId,
+              paymentTypeId,
+              accountId,
+              createdAt: Date.now(),
+            });
+            
+            // Create card record if it's a credit card
+            if (type.isCredit && type.closingDay && type.dueDay) {
+              await ctx.db.insert("cards", {
+                accountId,
+                userId,
+                closingDay: type.closingDay,
+                dueDate: type.dueDay,
+                softdelete: false,
+              });
+            }
+          } catch (error) {
+            console.error("Failed to create ledger structures for payment type:", type.name, error);
+            // Rollback: delete the payment type we just created
+            await ctx.db.delete(paymentTypeId);
+            throw new Error(`Failed to create payment type with ledger integration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
       }
     }
+    return null;
   },
 });
 
@@ -426,6 +886,34 @@ export const deleteExpense = mutation({
       softdelete: true,
       deletedAt: Date.now()
     });
+
+    // Dual-write soft delete
+    if (LEDGER_DUAL_WRITE_ENABLED) {
+      try {
+        // Find related journal entries via mapping or by sourceType/sourceId
+        const entries = await ctx.db
+          .query("journal_entries")
+          .withIndex("by_sourceType_sourceId", (q: any) => q.eq("sourceType", expense.transactionType as "expense" | "income").eq("sourceId", String(args.id)))
+          .collect();
+        for (const e of entries) {
+          await ctx.db.patch(e._id, {
+            softdelete: true,
+            deletedAt: Date.now(),
+            updateTime: Date.now(),
+            updatedBy: userId as Id<"users">,
+          });
+        }
+      } catch (err) {
+        logDualWriteError({
+          operation: "deleteExpense",
+          expenseId: String(args.id),
+          userId: String(userId),
+          errorMessage: err instanceof Error ? err.message : String(err),
+          errorStack: err instanceof Error ? err.stack : undefined,
+          timestamp: Date.now(),
+        });
+      }
+    }
   },
 });
 
@@ -498,23 +986,90 @@ export const updateExpense = mutation({
     // Regenerate payment schedules if needed
     if (needsScheduleRecalculation && expense.paymentTypeId) {
       // Delete existing schedules
-      await ctx.runMutation(internal.internal.expenses.deletePaymentSchedulesForExpense, {
-        expenseId: args.id,
-      });
+      void (await ctx.runMutation(
+        internal.internal.expenses.deletePaymentSchedulesForExpense,
+        { expenseId: args.id } as any,
+      ));
 
       // Get the updated expense
       const updatedExpense = await ctx.db.get(args.id);
       if (!updatedExpense) throw new Error("Updated expense not found");
 
       // Create new schedules
-      await ctx.runMutation(internal.internal.expenses.generatePaymentSchedules, {
-        expenseId: args.id,
-        firstDueDate: updatedExpense.nextDueDate!,
-        totalAmount: updatedExpense.amount,
-        totalInstallments: updatedExpense.cuotas,
-        userId,
-        paymentTypeId: updatedExpense.paymentTypeId!,
-      });
+      void (await ctx.runMutation(
+        internal.internal.expenses.generatePaymentSchedules,
+        {
+          expenseId: args.id,
+          firstDueDate: updatedExpense.nextDueDate!,
+          totalAmount: updatedExpense.amount,
+          totalInstallments: updatedExpense.cuotas,
+          userId,
+          paymentTypeId: updatedExpense.paymentTypeId!,
+        } as any,
+      ));
+    }
+
+    // Dual-write: update ledger entry amounts or metadata
+    if (LEDGER_DUAL_WRITE_ENABLED) {
+      try {
+        const existingEntry = await ctx.db
+          .query("journal_entries")
+          .withIndex("by_sourceType_sourceId", (q: any) =>
+            q.eq("sourceType", (updates.transactionType ?? expense.transactionType) as "expense" | "income").eq("sourceId", String(args.id))
+          )
+          .first();
+
+        if (existingEntry) {
+          await ctx.db.patch(existingEntry._id, {
+            updateTime: Date.now(),
+            updatedBy: userId as Id<"users">,
+          });
+
+          // If amount changed, adjust lines (simplest: delete and recreate lines)
+          if (args.amount !== undefined || args.categoryId !== undefined || args.paymentTypeId !== undefined) {
+            const lines = await ctx.db
+              .query("journal_lines")
+              .withIndex("by_entryId", (q: any) => q.eq("journalEntryId", existingEntry._id))
+              .collect();
+            for (const line of lines) await ctx.db.delete(line._id);
+
+            const userId = expense.userId as Id<"users">;
+            const categoryId = (args.categoryId ?? expense.categoryId) as Id<"categories">;
+            const paymentTypeId = (args.paymentTypeId ?? expense.paymentTypeId) as Id<"paymentTypes"> | undefined;
+            const categoryMapping = await getCategoryAccountMapping(ctx, userId, categoryId);
+            const paymentMapping = paymentTypeId ? await getPaymentTypeAccountMapping(ctx, userId, paymentTypeId) : null;
+            if (paymentMapping) {
+              const isIncome = (updates.transactionType ?? expense.transactionType) === "income";
+              const amountARS = toMinorARS(args.amount ?? expense.amount);
+              const debitAccountId = isIncome ? paymentMapping.accountId : categoryMapping.accountId;
+              const creditAccountId = isIncome ? categoryMapping.accountId : paymentMapping.accountId;
+              await createDoubleEntryLines({
+                ctx,
+                entryId: existingEntry._id,
+                userId,
+                debitAccountId,
+                creditAccountId,
+                amountARS,
+                date: updates.date ?? expense.date,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        logDualWriteError({
+          operation: "updateExpense",
+          expenseId: String(args.id),
+          userId: String(userId),
+          errorMessage: err instanceof Error ? err.message : String(err),
+          errorStack: err instanceof Error ? err.stack : undefined,
+          timestamp: Date.now(),
+          context: {
+            amount: args.amount,
+            categoryId: args.categoryId ? String(args.categoryId) : undefined,
+            paymentTypeId: args.paymentTypeId ? String(args.paymentTypeId) : undefined,
+          },
+        });
+      }
     }
 
     return args.id;
@@ -537,6 +1092,34 @@ export const verifyExpense = mutation({
 
     // Only set the verified flag to true
     await ctx.db.patch(args.id, { verified: true });
+
+    // Dual-write: update audit trail in ledger to track verification
+    if (LEDGER_DUAL_WRITE_ENABLED) {
+      try {
+        const existingEntry = await ctx.db
+          .query("journal_entries")
+          .withIndex("by_sourceType_sourceId", (q: any) =>
+            q.eq("sourceType", expense.transactionType as "expense" | "income").eq("sourceId", String(args.id))
+          )
+          .first();
+
+        if (existingEntry) {
+          await ctx.db.patch(existingEntry._id, {
+            updateTime: Date.now(),
+            updatedBy: userId as Id<"users">,
+          });
+        }
+      } catch (err) {
+        logDualWriteError({
+          operation: "verifyExpense",
+          expenseId: String(args.id),
+          userId: String(userId),
+          errorMessage: err instanceof Error ? err.message : String(err),
+          errorStack: err instanceof Error ? err.stack : undefined,
+          timestamp: Date.now(),
+        });
+      }
+    }
     
     return args.id;
   },
@@ -686,14 +1269,17 @@ export const migratePaymentSchedules = mutation({
       if (!nextDueDate) continue; // Can't migrate without due date
 
       // Use internal mutation to generate payment schedules
-      await ctx.runMutation(internal.internal.expenses.generatePaymentSchedules, {
-        expenseId: expense._id,
-        firstDueDate: nextDueDate,
-        totalAmount: expense.amount,
-        totalInstallments: expense.cuotas,
-        userId: expense.userId,
-        paymentTypeId: expense.paymentTypeId,
-      });
+      void (await ctx.runMutation(
+        internal.internal.expenses.generatePaymentSchedules,
+        {
+          expenseId: expense._id,
+          firstDueDate: nextDueDate,
+          totalAmount: expense.amount,
+          totalInstallments: expense.cuotas,
+          userId: expense.userId,
+          paymentTypeId: expense.paymentTypeId,
+        } as any,
+      ));
       migratedCount++;
     }
     return { migratedCount };

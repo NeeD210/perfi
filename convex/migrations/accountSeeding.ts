@@ -20,6 +20,7 @@ export const seedAccountsFromLegacyData = internalMutation({
   args: {
     userId: v.id("users"),
     batchSize: v.optional(v.number()), // default from utils
+    includeSoftDeleted: v.optional(v.boolean()), // Include soft-deleted items (default: true)
   },
   returns: v.object({
     accountsCreated: v.number(),
@@ -33,6 +34,7 @@ export const seedAccountsFromLegacyData = internalMutation({
     success: boolean;
     error?: string;
   }> => {
+    const includeSoftDeleted = args.includeSoftDeleted ?? true; // Default to including soft-deleted
     // Check feature flag
     if (!MIGRATION_FEATURE_FLAGS.PHASE2_MIGRATIONS_ENABLED) {
       return {
@@ -73,22 +75,32 @@ export const seedAccountsFromLegacyData = internalMutation({
         startedAt: Date.now(),
       });
 
-      // Count total records to process
+      // Count total records to process (including soft-deleted if flag is true)
       const [paymentTypeCount, categoryCount] = await Promise.all([
-        ctx.db
-          .query("paymentTypes")
-          .withIndex("by_user_softdelete", (q) =>
-            q.eq("userId", args.userId).eq("softdelete", false)
-          )
-          .collect()
-          .then(types => types.length),
-        ctx.db
-          .query("categories")
-          .withIndex("by_user_softdelete", (q) =>
-            q.eq("userId", args.userId).eq("softdelete", false)
-          )
-          .collect()
-          .then(categories => categories.length)
+        (includeSoftDeleted
+          ? ctx.db
+              .query("paymentTypes")
+              .withIndex("by_user", (q) => q.eq("userId", args.userId))
+              .collect()
+          : ctx.db
+              .query("paymentTypes")
+              .withIndex("by_user_softdelete", (q) =>
+                q.eq("userId", args.userId).eq("softdelete", false)
+              )
+              .collect()
+        ).then(types => types.length),
+        (includeSoftDeleted
+          ? ctx.db
+              .query("categories")
+              .withIndex("by_user", (q) => q.eq("userId", args.userId))
+              .collect()
+          : ctx.db
+              .query("categories")
+              .withIndex("by_user_softdelete", (q) =>
+                q.eq("userId", args.userId).eq("softdelete", false)
+              )
+              .collect()
+        ).then(categories => categories.length)
       ]);
 
       const totalRecords = paymentTypeCount + categoryCount;
@@ -101,13 +113,18 @@ export const seedAccountsFromLegacyData = internalMutation({
       let accountsCreated = 0;
       let mappingsCreated = 0;
 
-      // Process payment types
-      const paymentTypes = await ctx.db
-        .query("paymentTypes")
-        .withIndex("by_user_softdelete", (q) =>
-          q.eq("userId", args.userId).eq("softdelete", false)
-        )
-        .collect();
+      // Process payment types (including soft-deleted if flag is true)
+      const paymentTypes = includeSoftDeleted
+        ? await ctx.db
+            .query("paymentTypes")
+            .withIndex("by_user", (q) => q.eq("userId", args.userId))
+            .collect()
+        : await ctx.db
+            .query("paymentTypes")
+            .withIndex("by_user_softdelete", (q) =>
+              q.eq("userId", args.userId).eq("softdelete", false)
+            )
+            .collect();
 
       for (const paymentType of paymentTypes) {
         const idempotencyKey = generateAccountSeedingKey(args.userId, paymentType._id, 'paymentType');
@@ -127,17 +144,17 @@ export const seedAccountsFromLegacyData = internalMutation({
         // Determine account type
         const accountType = getAccountTypeFromPaymentType(paymentType.isCredit);
 
-        // Create account
+        // Create account (preserve soft-delete status)
         const accountId = await ctx.db.insert("accounts", {
           userId: args.userId,
           description: paymentType.name,
           accountType,
           creationTime: Date.now(),
-          softdelete: false,
+          softdelete: paymentType.softdelete || false, // PRESERVE soft-delete status
         });
 
-        // Create card entry if it's a credit card
-        if (paymentType.isCredit && paymentType.closingDay && paymentType.dueDay) {
+        // Create card entry if it's a credit card (and not soft-deleted)
+        if (paymentType.isCredit && !paymentType.softdelete && paymentType.closingDay && paymentType.dueDay) {
           await ctx.db.insert("cards", {
             accountId: accountId as Id<"accounts">,
             userId: args.userId,
@@ -164,13 +181,18 @@ export const seedAccountsFromLegacyData = internalMutation({
         });
       }
 
-      // Process categories
-      const categories = await ctx.db
-        .query("categories")
-        .withIndex("by_user_softdelete", (q) =>
-          q.eq("userId", args.userId).eq("softdelete", false)
-        )
-        .collect();
+      // Process categories (including soft-deleted if flag is true)
+      const categories = includeSoftDeleted
+        ? await ctx.db
+            .query("categories")
+            .withIndex("by_user", (q) => q.eq("userId", args.userId))
+            .collect()
+        : await ctx.db
+            .query("categories")
+            .withIndex("by_user_softdelete", (q) =>
+              q.eq("userId", args.userId).eq("softdelete", false)
+            )
+            .collect();
 
       for (const category of categories) {
         const idempotencyKey = generateAccountSeedingKey(args.userId, category._id, 'category');
@@ -190,13 +212,13 @@ export const seedAccountsFromLegacyData = internalMutation({
         // Determine account type from transaction type
         const accountType = getAccountTypeFromTransactionType(category.transactionType || 'expense');
 
-        // Create account
+        // Create account (preserve soft-delete status)
         const accountId = await ctx.db.insert("accounts", {
           userId: args.userId,
           description: category.name,
           accountType,
           creationTime: Date.now(),
-          softdelete: false,
+          softdelete: category.softdelete || false, // PRESERVE soft-delete status
         });
 
         // Create mapping

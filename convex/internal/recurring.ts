@@ -1,8 +1,11 @@
 import { internalAction, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { v } from "convex/values";
 
 // Internal action to process recurring transactions
 export const processRecurringTransactions = internalAction({
+  args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const due = await ctx.runQuery(internal.internal.getRecurringTransactionsToProcess);
     for (const transaction of due) {
@@ -25,5 +28,6 @@ export const processRecurringTransactions = internalAction({
         console.error("Error processing recurring transaction:", error);
       }
     }
+    return null;
   },
 }); 

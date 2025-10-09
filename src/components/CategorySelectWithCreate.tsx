@@ -47,9 +47,9 @@ export default function CategorySelectWithCreate({ value, onChange, transactionT
 		setIsSubmitting(true);
 		try {
 			// Build full list preserving existing categories for both transaction types
-			const existing = categories.map(c => ({ name: c.name, transactionType: c.transactionType ?? "expense" }));
+			const existing = categories.map(c => ({ _id: c._id, name: c.name, transactionType: c.transactionType ?? "expense" }));  // ✅ Preserve IDs
 			const existsSame = existing.some(c => c.name === name && c.transactionType === transactionType);
-			const payload = existsSame ? existing : [...existing, { name, transactionType }];
+			const payload = existsSame ? existing : [...existing, { name, transactionType }];  // No ID for new category
 			await updateCategories({ categories: payload });
 			setPendingSelectName(name);
 			setIsDialogOpen(false);

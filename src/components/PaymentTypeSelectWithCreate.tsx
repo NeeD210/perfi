@@ -25,7 +25,7 @@ interface PaymentTypeSelectWithCreateProps {
 export default function PaymentTypeSelectWithCreate({ value, onChange, disabled }: PaymentTypeSelectWithCreateProps) {
 	const { toast } = useToast();
 	const paymentTypes = (useQuery(api.expenses.getPaymentTypes) as PaymentTypeRecord[] | undefined) ?? [];
-	const addPaymentType = useMutation(api.expenses.addPaymentType);
+	const updatePaymentTypes = useMutation(api.expenses.updatePaymentTypes);
 
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [newName, setNewName] = useState("");
@@ -59,13 +59,37 @@ export default function PaymentTypeSelectWithCreate({ value, onChange, disabled 
 		}
 		setIsSubmitting(true);
 		try {
-			const newId = await addPaymentType({
-				name,
-				isCredit,
-				closingDay: isCredit ? parseInt(closingDay) : undefined,
-				dueDay: isCredit ? parseInt(dueDay) : undefined,
+			// Add new payment type to existing list using updatePaymentTypes
+			const updatedPaymentTypes = [
+				...paymentTypes.map(pt => ({
+					_id: pt._id,  // ✅ Preserve IDs
+					name: pt.name,
+					isCredit: pt.isCredit ?? false,
+					closingDay: pt.closingDay,
+					dueDay: pt.dueDay,
+				})),
+				{
+					// No _id for new payment type
+					name,
+					isCredit,
+					closingDay: isCredit ? parseInt(closingDay) : undefined,
+					dueDay: isCredit ? parseInt(dueDay) : undefined,
+				},
+			];
+			
+			await updatePaymentTypes({
+				paymentTypes: updatedPaymentTypes,
 			});
-			setPendingNewId(newId as Id<"paymentTypes">);
+			
+			// Find the newly created payment type by name
+			// Wait a moment for the query to update
+			setTimeout(() => {
+				const newType = paymentTypes.find(pt => pt.name === name);
+				if (newType) {
+					setPendingNewId(newType._id);
+				}
+			}, 100);
+			
 			setIsDialogOpen(false);
 			setNewName("");
 			setIsCredit(false);
@@ -77,7 +101,7 @@ export default function PaymentTypeSelectWithCreate({ value, onChange, disabled 
 		} finally {
 			setIsSubmitting(false);
 		}
-	}, [addPaymentType, newName, isCredit, closingDay, dueDay, toast]);
+	}, [updatePaymentTypes, paymentTypes, newName, isCredit, closingDay, dueDay, toast]);
 
 	useEffect(() => {
 		if (pendingNewId) {

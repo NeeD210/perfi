@@ -38,15 +38,19 @@ export function CategoryForm({ transactionType, onSuccess, onCancel, initialData
     }
 
     try {
-      let next: Array<{ name: string; transactionType: string }>; 
+      let next: Array<{ _id?: Id<"categories">; name: string; transactionType: string }>; 
       if (initialData) {
         // Update existing category by id
-        next = normalizedExisting.map(c => c.id === initialData.id ? { name: trimmed, transactionType } : { name: c.name, transactionType: c.transactionType });
+        next = normalizedExisting.map(c => 
+          c.id === initialData.id 
+            ? { _id: initialData.id, name: trimmed, transactionType }  // ✅ Include ID for update
+            : { _id: c.id, name: c.name, transactionType: c.transactionType }  // ✅ Preserve IDs
+        );
       } else {
-        // Add a new category
+        // Add a new category (no ID for new)
         next = [
-          ...normalizedExisting.map(c => ({ name: c.name, transactionType: c.transactionType })),
-          { name: trimmed, transactionType },
+          ...normalizedExisting.map(c => ({ _id: c.id, name: c.name, transactionType: c.transactionType })),  // ✅ Preserve IDs
+          { name: trimmed, transactionType },  // No ID for new category
         ];
       }
 

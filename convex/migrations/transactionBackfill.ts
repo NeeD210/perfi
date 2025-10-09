@@ -180,24 +180,83 @@ export const backfillHistoricalTransactions = internalMutation({
           continue; // Already processed
         }
 
-        // Get account mappings
-        const [categoryMapping, paymentTypeMapping] = await Promise.all([
-          expense.categoryId ? ctx.db
-            .query("category_mappings")
-            .withIndex("by_user_category", (q) =>
-              q.eq("userId", args.userId).eq("categoryId", expense.categoryId!)
-            )
-            .first() : null,
-          expense.paymentTypeId ? ctx.db
+        // Get category mapping
+        const categoryMapping = expense.categoryId ? await ctx.db
+          .query("category_mappings")
+          .withIndex("by_user_category", (q) =>
+            q.eq("userId", args.userId).eq("categoryId", expense.categoryId!)
+          )
+          .first() : null;
+
+        if (!categoryMapping) {
+          console.warn(`Missing category mapping for expense ${expense._id}`);
+          // Skip this expense but continue processing others
+          expensesProcessed++;
+          continue;
+        }
+
+        // Get or create payment type mapping
+        let paymentTypeMapping = null;
+        
+        if (expense.paymentTypeId) {
+          // Normal case: expense has a payment type
+          paymentTypeMapping = await ctx.db
             .query("payment_type_mappings")
             .withIndex("by_user_paymentType", (q) =>
               q.eq("userId", args.userId).eq("paymentTypeId", expense.paymentTypeId!)
             )
-            .first() : null,
-        ]);
+            .first();
+        } else {
+          // Income case (or missing paymentType): default to "Efectivo"
+          // Look for existing "Efectivo" payment type
+          let efectivoPaymentType = await ctx.db
+            .query("paymentTypes")
+            .withIndex("by_user_softdelete", (q) =>
+              q.eq("userId", args.userId).eq("softdelete", false)
+            )
+            .filter(q => q.eq(q.field("name"), "Efectivo"))
+            .first();
 
-        if (!categoryMapping || !paymentTypeMapping) {
-          console.warn(`Missing mappings for expense ${expense._id}: category=${!!categoryMapping}, paymentType=${!!paymentTypeMapping}`);
+          // If doesn't exist, create it
+          if (!efectivoPaymentType) {
+            const paymentTypeId = await ctx.db.insert("paymentTypes", {
+              userId: args.userId,
+              name: "Efectivo",
+              isCredit: false,
+              softdelete: false,
+            });
+            efectivoPaymentType = await ctx.db.get(paymentTypeId);
+
+            // Create corresponding account and mapping
+            const accountId = await ctx.db.insert("accounts", {
+              userId: args.userId,
+              description: "Efectivo",
+              accountType: "asset",
+              creationTime: Date.now(),
+              softdelete: false,
+            });
+
+            await ctx.db.insert("payment_type_mappings", {
+              userId: args.userId,
+              paymentTypeId: paymentTypeId,
+              accountId: accountId as Id<"accounts">,
+              createdAt: Date.now(),
+            });
+
+            console.log(`Created default "Efectivo" payment type and account for user ${args.userId}`);
+          }
+
+          // Get the mapping
+          paymentTypeMapping = await ctx.db
+            .query("payment_type_mappings")
+            .withIndex("by_user_paymentType", (q) =>
+              q.eq("userId", args.userId).eq("paymentTypeId", efectivoPaymentType!._id)
+            )
+            .first();
+        }
+
+        if (!paymentTypeMapping) {
+          console.warn(`Missing payment type mapping for expense ${expense._id}`);
           // Skip this expense but continue processing others
           expensesProcessed++;
           continue;

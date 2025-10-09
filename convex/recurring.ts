@@ -3,6 +3,13 @@ import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { initializeNextDueDate, stepDateByFrequency } from "./lib/scheduling";
+import { LEDGER_DUAL_WRITE_ENABLED } from "./ledger/dualWriteConfig";
+import { 
+  getCategoryAccountMapping, 
+  getPaymentTypeAccountMapping, 
+  ensureDefaultCashMapping,
+  toMinorARS 
+} from "./ledger/dualWriteUtils";
 
 // Helper function to get the authenticated user's ID
 async function getAuthenticatedUserId(ctx: { auth: { getUserIdentity: () => Promise<any> }, db: any }): Promise<Id<"users"> | null> {
@@ -87,6 +94,110 @@ export const addRecurringTransaction = mutation({
       targetDate = stepDateByFrequency(targetDate, args.frequency as any, anchorDay);
     }
 
+    // Dual-write: create recurring template in ledger
+    if (LEDGER_DUAL_WRITE_ENABLED) {
+      try {
+        // Check for existing mapping (idempotency)
+        const existingMap = await ctx.db
+          .query("recurring_template_mappings")
+          .withIndex("by_user_legacyRecurring", (q) => 
+            q.eq("userId", userId).eq("legacyRecurringId", recurringTransactionId)
+          )
+          .first();
+        
+        if (!existingMap) {
+          // Get account mappings
+          const categoryMapping = await getCategoryAccountMapping(ctx, userId, args.categoryId);
+          
+          let paymentAccountId: Id<"accounts">;
+          if (args.paymentTypeId) {
+            try {
+              const paymentMapping = await getPaymentTypeAccountMapping(ctx, userId, args.paymentTypeId);
+              paymentAccountId = paymentMapping.accountId;
+            } catch {
+              // Fallback to default cash if mapping not found
+              const ensured = await ensureDefaultCashMapping(ctx, userId);
+              paymentAccountId = ensured.accountId;
+            }
+          } else {
+            // No payment type specified, use default cash
+            const ensured = await ensureDefaultCashMapping(ctx, userId);
+            paymentAccountId = ensured.accountId;
+          }
+          
+          const amountARS = toMinorARS(args.amount);
+          const isIncome = args.transactionType === "income";
+          
+          // Create recurring_entries
+          const recurringEntryId = await ctx.db.insert("recurring_entries", {
+            userId,
+            description: args.description,
+            frequency: args.frequency as any,
+            creationTime: Date.now(),
+            anchorDay,
+            endDate: args.endDate,
+            status: (args.isActive ?? true) ? "active" : "paused",
+            nextDueDate: initialNextDueDate,
+            softdelete: false,
+          }) as Id<"recurring_entries">;
+          
+          // Create recurring_lines (debit and credit)
+          if (isIncome) {
+            // Income: Dr Cash/Bank, Cr Income Account
+            await ctx.db.insert("recurring_lines", {
+              recurringId: recurringEntryId,
+              userId,
+              accountId: paymentAccountId,
+              direction: "debit" as const,
+              currencyCode: "ARS",
+              amount: amountARS,
+              softdelete: false,
+            });
+            await ctx.db.insert("recurring_lines", {
+              recurringId: recurringEntryId,
+              userId,
+              accountId: categoryMapping.accountId,
+              direction: "credit" as const,
+              currencyCode: "ARS",
+              amount: amountARS,
+              softdelete: false,
+            });
+          } else {
+            // Expense: Dr Expense Account, Cr Cash/Bank
+            await ctx.db.insert("recurring_lines", {
+              recurringId: recurringEntryId,
+              userId,
+              accountId: categoryMapping.accountId,
+              direction: "debit" as const,
+              currencyCode: "ARS",
+              amount: amountARS,
+              softdelete: false,
+            });
+            await ctx.db.insert("recurring_lines", {
+              recurringId: recurringEntryId,
+              userId,
+              accountId: paymentAccountId,
+              direction: "credit" as const,
+              currencyCode: "ARS",
+              amount: amountARS,
+              softdelete: false,
+            });
+          }
+          
+          // Create mapping
+          await ctx.db.insert("recurring_template_mappings", {
+            userId,
+            legacyRecurringId: recurringTransactionId,
+            recurringEntryId,
+            createdAt: Date.now(),
+          });
+        }
+      } catch (error) {
+        console.error("Failed to create recurring template in ledger:", error);
+        // Continue - template still works via legacy system
+      }
+    }
+
     return recurringTransactionId;
   },
 });
@@ -147,6 +258,122 @@ export const updateRecurringTransaction = mutation({
     }
 
     await ctx.db.patch(args.id, updates);
+    
+    // Dual-write: update recurring template in ledger
+    if (LEDGER_DUAL_WRITE_ENABLED) {
+      try {
+        // Find the ledger recurring entry via mapping
+        const mapping = await ctx.db
+          .query("recurring_template_mappings")
+          .withIndex("by_user_legacyRecurring", (q) => 
+            q.eq("userId", userId).eq("legacyRecurringId", args.id)
+          )
+          .first();
+        
+        if (mapping) {
+          // Update recurring_entries metadata
+          const entryUpdates: any = {};
+          if (args.description !== undefined) entryUpdates.description = args.description;
+          if (args.isActive !== undefined) entryUpdates.status = args.isActive ? "active" : "paused";
+          if (args.frequency !== undefined) entryUpdates.frequency = args.frequency;
+          if (args.endDate !== undefined) entryUpdates.endDate = args.endDate;
+          if (updates.nextDueDate !== undefined) entryUpdates.nextDueDate = updates.nextDueDate;
+          if (args.startDate !== undefined) {
+            entryUpdates.anchorDay = new Date(args.startDate).getDate();
+          }
+          
+          if (Object.keys(entryUpdates).length > 0) {
+            await ctx.db.patch(mapping.recurringEntryId, entryUpdates);
+          }
+          
+          // If amount/category/paymentType changed, recreate recurring_lines
+          if (args.amount !== undefined || args.categoryId !== undefined || args.paymentTypeId !== undefined) {
+            // Get updated recurring transaction
+            const updated = await ctx.db.get(args.id);
+            if (!updated) throw new Error("Recurring transaction not found after update");
+            
+            // Delete existing lines
+            const existingLines = await ctx.db
+              .query("recurring_lines")
+              .withIndex("by_recurringId", (q) => q.eq("recurringId", mapping.recurringEntryId))
+              .collect();
+            for (const line of existingLines) {
+              await ctx.db.delete(line._id);
+            }
+            
+            // Get account mappings with updated values
+            const finalCategoryId = args.categoryId ?? updated.categoryId;
+            const finalPaymentTypeId = args.paymentTypeId ?? updated.paymentTypeId;
+            const finalAmount = args.amount ?? updated.amount;
+            const finalTransactionType = args.transactionType ?? updated.transactionType;
+            
+            const categoryMapping = await getCategoryAccountMapping(ctx, userId, finalCategoryId);
+            
+            let paymentAccountId: Id<"accounts">;
+            if (finalPaymentTypeId) {
+              try {
+                const paymentMapping = await getPaymentTypeAccountMapping(ctx, userId, finalPaymentTypeId);
+                paymentAccountId = paymentMapping.accountId;
+              } catch {
+                const ensured = await ensureDefaultCashMapping(ctx, userId);
+                paymentAccountId = ensured.accountId;
+              }
+            } else {
+              const ensured = await ensureDefaultCashMapping(ctx, userId);
+              paymentAccountId = ensured.accountId;
+            }
+            
+            const amountARS = toMinorARS(finalAmount);
+            const isIncome = finalTransactionType === "income";
+            
+            // Create new lines
+            if (isIncome) {
+              await ctx.db.insert("recurring_lines", {
+                recurringId: mapping.recurringEntryId,
+                userId,
+                accountId: paymentAccountId,
+                direction: "debit" as const,
+                currencyCode: "ARS",
+                amount: amountARS,
+                softdelete: false,
+              });
+              await ctx.db.insert("recurring_lines", {
+                recurringId: mapping.recurringEntryId,
+                userId,
+                accountId: categoryMapping.accountId,
+                direction: "credit" as const,
+                currencyCode: "ARS",
+                amount: amountARS,
+                softdelete: false,
+              });
+            } else {
+              await ctx.db.insert("recurring_lines", {
+                recurringId: mapping.recurringEntryId,
+                userId,
+                accountId: categoryMapping.accountId,
+                direction: "debit" as const,
+                currencyCode: "ARS",
+                amount: amountARS,
+                softdelete: false,
+              });
+              await ctx.db.insert("recurring_lines", {
+                recurringId: mapping.recurringEntryId,
+                userId,
+                accountId: paymentAccountId,
+                direction: "credit" as const,
+                currencyCode: "ARS",
+                amount: amountARS,
+                softdelete: false,
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to update recurring template in ledger:", error);
+        // Continue - template still works via legacy system
+      }
+    }
+    
     return args.id;
   },
 });
@@ -166,6 +393,44 @@ export const deleteRecurringTransaction = mutation({
     }
 
     await ctx.db.patch(args.id, { softdelete: true });
+    
+    // Dual-write: soft-delete recurring template in ledger
+    if (LEDGER_DUAL_WRITE_ENABLED) {
+      try {
+        // Find the ledger recurring entry via mapping
+        const mapping = await ctx.db
+          .query("recurring_template_mappings")
+          .withIndex("by_user_legacyRecurring", (q) => 
+            q.eq("userId", userId).eq("legacyRecurringId", args.id)
+          )
+          .first();
+        
+        if (mapping) {
+          // Soft-delete recurring_entries
+          await ctx.db.patch(mapping.recurringEntryId, {
+            softdelete: true,
+            deletedAt: Date.now(),
+          });
+          
+          // Soft-delete associated recurring_lines
+          const lines = await ctx.db
+            .query("recurring_lines")
+            .withIndex("by_recurringId", (q) => q.eq("recurringId", mapping.recurringEntryId))
+            .collect();
+          
+          for (const line of lines) {
+            await ctx.db.patch(line._id, {
+              softdelete: true,
+              deletedAt: Date.now(),
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to soft-delete recurring template in ledger:", error);
+        // Continue - template still deleted in legacy system
+      }
+    }
+    
     return args.id;
   },
 });
@@ -184,7 +449,32 @@ export const toggleRecurringTransactionStatus = mutation({
       throw new Error("Recurring transaction not found");
     }
 
-    await ctx.db.patch(args.id, { isActive: !recurringTransaction.isActive });
+    const newIsActive = !recurringTransaction.isActive;
+    await ctx.db.patch(args.id, { isActive: newIsActive });
+    
+    // Dual-write: update status in ledger
+    if (LEDGER_DUAL_WRITE_ENABLED) {
+      try {
+        // Find the ledger recurring entry via mapping
+        const mapping = await ctx.db
+          .query("recurring_template_mappings")
+          .withIndex("by_user_legacyRecurring", (q) => 
+            q.eq("userId", userId).eq("legacyRecurringId", args.id)
+          )
+          .first();
+        
+        if (mapping) {
+          // Update status in recurring_entries
+          await ctx.db.patch(mapping.recurringEntryId, {
+            status: newIsActive ? "active" : "paused",
+          });
+        }
+      } catch (error) {
+        console.error("Failed to toggle recurring status in ledger:", error);
+        // Continue - status still toggled in legacy system
+      }
+    }
+    
     return args.id;
   },
 });
@@ -241,74 +531,13 @@ export const generateTransactionFromRecurring = mutation({
     recurringTransactionId: v.id("recurringTransactions"),
     targetDate: v.number(),
   },
+  returns: v.id("expenses"),
   handler: async (ctx, args) => {
-    const recurringTransaction = await ctx.db.get(args.recurringTransactionId);
-    if (!recurringTransaction) {
-      throw new Error("Recurring transaction not found");
-    }
-
-    // Respect boundaries: do not generate outside start/end window
-    if (args.targetDate < recurringTransaction.startDate) {
-      throw new Error("Target date before startDate");
-    }
-    if (recurringTransaction.endDate && args.targetDate > recurringTransaction.endDate) {
-      // Deactivate and stop further processing
-      await ctx.db.patch(args.recurringTransactionId, { isActive: false, nextDueDate: undefined });
-      throw new Error("Recurring transaction past endDate; deactivated");
-    }
-
-    // Get the category to include category name
-    const category = await ctx.db.get(recurringTransaction.categoryId);
-    if (!category) {
-      throw new Error("Category not found");
-    }
-
-    // Idempotency: avoid duplicates for same recurringId + date
-    const existing = await ctx.db
-      .query("expenses")
-      .withIndex("by_recurringTransactionId", (q) => q.eq("recurringTransactionId", args.recurringTransactionId))
-      .filter((q) => q.eq(q.field("date"), args.targetDate))
-      .first();
-    if (existing) {
-      return existing._id;
-    }
-
-    // Create the transaction at the scheduled targetDate
-    const transactionId = await ctx.db.insert("expenses", {
-      userId: recurringTransaction.userId,
-      description: recurringTransaction.description,
-      amount: recurringTransaction.amount,
-      category: category.name,
-      categoryId: recurringTransaction.categoryId,
-      paymentTypeId: recurringTransaction.paymentTypeId,
-      transactionType: recurringTransaction.transactionType,
-      date: args.targetDate,
-      cuotas: recurringTransaction.cuotas ?? 1,
-      verified: false,
-      recurringTransactionId: args.recurringTransactionId,
-      softdelete: false,
-    });
-
-    // Update processing markers: lastProcessedDate and advance nextDueDate
-    const anchorDay = new Date(recurringTransaction.startDate).getDate();
-    const advancedNext = stepDateByFrequency(args.targetDate, recurringTransaction.frequency as any, anchorDay);
-    await ctx.db.patch(args.recurringTransactionId, {
-      lastProcessedDate: args.targetDate,
-      nextDueDate: advancedNext,
-    });
-
-    // If this is an installment payment and has a payment type, generate the payment schedules
-    if ((recurringTransaction.cuotas ?? 1) > 1 && recurringTransaction.paymentTypeId) {
-      await ctx.runMutation(internal.internal.expenses.generatePaymentSchedules, {
-        paymentTypeId: recurringTransaction.paymentTypeId,
-        userId: recurringTransaction.userId,
-        expenseId: transactionId,
-        totalInstallments: recurringTransaction.cuotas ?? 1,
-        firstDueDate: args.targetDate,
-        totalAmount: recurringTransaction.amount,
-      });
-    }
-
+    // Delegate to internal dual-write implementation to ensure ledger posting
+    const transactionId: Id<"expenses"> = await ctx.runMutation(
+      internal.internal.generateTransactionFromRecurring,
+      { recurringTransactionId: args.recurringTransactionId, targetDate: args.targetDate }
+    );
     return transactionId;
   },
 }); 

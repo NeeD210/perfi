@@ -23,7 +23,7 @@ type PaymentTypeDoc = {
 export default function PaymentTypesManager() {
   const { toast } = useToast();
   const paymentTypes = (useQuery(api.expenses.getPaymentTypes) as PaymentTypeDoc[] | undefined) ?? [];
-  const removePaymentType = useMutation(api.expenses.removePaymentType);
+  const updatePaymentTypes = useMutation(api.expenses.updatePaymentTypes);
 
   const [screenWidth, setScreenWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 375);
   const swipePositions = useRef<Record<string, number>>({});
@@ -82,7 +82,18 @@ export default function PaymentTypesManager() {
 
   const handleDelete = async (id: Id<'paymentTypes'>) => {
     try {
-      await removePaymentType({ id });
+      // Remove payment type from list using updatePaymentTypes
+      const updatedPaymentTypes = paymentTypes
+        .filter(pt => pt._id !== id)
+        .map(pt => ({
+          _id: pt._id,  // ✅ Preserve IDs
+          name: pt.name,
+          isCredit: pt.isCredit ?? false,
+          closingDay: pt.closingDay,
+          dueDay: pt.dueDay,
+        }));
+      
+      await updatePaymentTypes({ paymentTypes: updatedPaymentTypes });
       toast({ title: "Success", description: "Payment type deleted" });
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to delete payment type" });

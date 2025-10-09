@@ -38,7 +38,7 @@ export default function ConfigPage() {
     try {
       const newCategory = { name: name.trim(), transactionType: type };
       const updatedCategories = [
-        ...categories.map(c => ({ name: c.name, transactionType: c.transactionType ?? "expense" })),
+        ...categories.map(c => ({ _id: c._id, name: c.name, transactionType: c.transactionType ?? "expense" })),
         newCategory
       ];
       await updateCategories({ categories: updatedCategories });
@@ -63,6 +63,7 @@ export default function ConfigPage() {
       const updatedCategories = categories
         .filter(c => c._id !== category._id)
         .map(c => ({ 
+          _id: c._id,  // ✅ Preserve ID
           name: c.name, 
           transactionType: c.transactionType ?? "expense" 
         }));

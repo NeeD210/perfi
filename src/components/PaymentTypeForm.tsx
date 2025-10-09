@@ -85,7 +85,6 @@ export function PaymentTypeForm({ onSuccess, onCancel, initialData, renderAction
   const [closingDay, setClosingDay] = useState(initialData?.closingDay?.toString() ?? "");
   const [dueDay, setDueDay] = useState(initialData?.dueDay?.toString() ?? "");
 
-  const addPaymentType = useMutation(api.expenses.addPaymentType);
   const updatePaymentTypes = useMutation(api.expenses.updatePaymentTypes);
   const existingPaymentTypes = useQuery(api.expenses.getPaymentTypes) ?? [];
 
@@ -115,43 +114,53 @@ export function PaymentTypeForm({ onSuccess, onCancel, initialData, renderAction
     try {
       validateForm();
 
+      // Build payment types array (works for both create and update)
+      const paymentTypeData = {
+        _id: initialData?.id,  // ✅ Include ID for updates
+        name,
+        isCredit,
+        closingDay: isCredit ? parseInt(closingDay) : undefined,
+        dueDay: isCredit ? parseInt(dueDay) : undefined,
+      };
+
+      let updatedPaymentTypes;
       if (initialData) {
         // Update existing payment type
-        const updatedPaymentTypes = existingPaymentTypes.map(type => {
+        updatedPaymentTypes = existingPaymentTypes.map(type => {
           if (type._id === initialData.id) {
-            return {
-              name,
-              isCredit,
-              closingDay: isCredit ? parseInt(closingDay) : undefined,
-              dueDay: isCredit ? parseInt(dueDay) : undefined,
-            };
+            return paymentTypeData;
           }
           return {
+            _id: type._id,  // ✅ Preserve IDs
             name: type.name,
             isCredit: type.isCredit ?? false,
             closingDay: type.closingDay,
             dueDay: type.dueDay,
           };
         });
-
-        await updatePaymentTypes({
-          paymentTypes: updatedPaymentTypes,
-        });
       } else {
-        // Create new payment type
-        await addPaymentType({
-          name,
-          isCredit,
-          closingDay: isCredit ? parseInt(closingDay) : undefined,
-          dueDay: isCredit ? parseInt(dueDay) : undefined,
-        });
+        // Create new payment type - add to existing list (no ID for new items)
+        updatedPaymentTypes = [
+          ...existingPaymentTypes.map(type => ({
+            _id: type._id,  // ✅ Preserve IDs
+            name: type.name,
+            isCredit: type.isCredit ?? false,
+            closingDay: type.closingDay,
+            dueDay: type.dueDay,
+          })),
+          paymentTypeData,
+        ];
       }
+
+      await updatePaymentTypes({
+        paymentTypes: updatedPaymentTypes,
+      });
       onSuccess?.();
     } catch (error) {
       console.error("Error saving payment type:", error);
       alert(error instanceof Error ? error.message : "Error saving payment type. Please try again.");
     }
-  }, [name, isCredit, closingDay, dueDay, initialData, existingPaymentTypes, addPaymentType, updatePaymentTypes, onSuccess, validateForm]);
+  }, [name, isCredit, closingDay, dueDay, initialData, existingPaymentTypes, updatePaymentTypes, onSuccess, validateForm]);
 
   // Memoize the credit card fields
   const creditCardFields = useMemo(() => {

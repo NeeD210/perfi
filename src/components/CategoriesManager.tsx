@@ -87,7 +87,7 @@ export default function CategoriesManager({ type }: { type: "expense" | "income"
       // Remove by recomputing the list without this category
       const next = categories
         .filter(c => c._id !== id)
-        .map(c => ({ name: c.name, transactionType: c.transactionType ?? "expense" }));
+        .map(c => ({ _id: c._id, name: c.name, transactionType: c.transactionType ?? "expense" }));  // ✅ Preserve IDs
       await updateCategories({ categories: next });
       toast({ title: "Success", description: "Category deleted" });
     } catch (error) {

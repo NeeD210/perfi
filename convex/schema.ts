@@ -40,7 +40,8 @@ export default defineSchema({
     isCredit: v.optional(v.boolean()),
     closingDay: v.optional(v.number()),
     dueDay: v.optional(v.number()),
-  }).index("by_user_softdelete", ["userId", "softdelete"]),
+  }).index("by_user", ["userId"])
+    .index("by_user_softdelete", ["userId", "softdelete"]),
 
   expenses: defineTable({
     amount: v.float64(),
@@ -135,12 +136,13 @@ export default defineSchema({
     linkType: v.optional(linkTypeValidator),
     installmentNumber: v.optional(v.number()),
     totalInstallments: v.optional(v.number()),
-    createdBy: v.string(),
-    updatedBy: v.optional(v.string()),
+    createdBy: v.id("users"),
+    updatedBy: v.optional(v.id("users")),
   })
     .index("by_user_date", ["userId", "date"])
     .index("by_user_status_date", ["userId", "status", "date"])
-    .index("by_sourceType_sourceId", ["sourceType", "sourceId"]),
+    .index("by_sourceType_sourceId", ["sourceType", "sourceId"])
+    .index("by_idempotencyKey", ["idempotencyKey"]),
 
   journal_lines: defineTable({
     journalEntryId: v.id("journal_entries"),
