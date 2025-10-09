@@ -41,6 +41,7 @@ import type * as migrations_index from "../migrations/index.js";
 import type * as migrations_installmentBackfill from "../migrations/installmentBackfill.js";
 import type * as migrations_phase2Runner from "../migrations/phase2Runner.js";
 import type * as migrations_preflightCheck from "../migrations/preflightCheck.js";
+import type * as migrations_prodRunner from "../migrations/prodRunner.js";
 import type * as migrations_recurring from "../migrations/recurring.js";
 import type * as migrations_recurringCurrencyBackfill from "../migrations/recurringCurrencyBackfill.js";
 import type * as migrations_recurringToLedger from "../migrations/recurringToLedger.js";
@@ -91,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/installmentBackfill": typeof migrations_installmentBackfill;
   "migrations/phase2Runner": typeof migrations_phase2Runner;
   "migrations/preflightCheck": typeof migrations_preflightCheck;
+  "migrations/prodRunner": typeof migrations_prodRunner;
   "migrations/recurring": typeof migrations_recurring;
   "migrations/recurringCurrencyBackfill": typeof migrations_recurringCurrencyBackfill;
   "migrations/recurringToLedger": typeof migrations_recurringToLedger;
