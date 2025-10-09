@@ -157,47 +157,50 @@ git branch
 git add .
 
 # Commit with descriptive message
-git commit -m "feat: Implement Phase 1-3 accounting ledger system
+git commit -m "feat: Implement Phase 1-3 accounting ledger system with improvements
 
-- Phase 1: Add double-entry ledger tables and accounts
-  - Add journal_entries, journal_lines tables
-  - Add accounts table with COA structure
-  - Add FX rates and multi-currency support
-  - Add payment type to account mappings
-
-- Phase 2: Historical data migration
-  - Migrate all expenses to journal entries
-  - Migrate recurring transactions to recurring entries
-  - Backfill FX rates for historical transactions
-  - Maintain zero-sum invariant across all entries
-
+- Phase 1: Double-entry ledger tables and accounts
+- Phase 2: Historical data migration (100% success in dev)
 - Phase 3: Dual-write implementation
-  - Add dual-write logic to expense mutations
-  - Add dual-write logic to recurring mutations
-  - Add error tracking and diagnostics
-  - Add idempotency protection
+
+Improvements:
+- Handle soft-deleted references (preserves historical data)
+- Auto-create 'Efectivo' for incomes (handles empty paymentType)
+- Pre-flight data quality checks
+- Post-migration verification suite
+- Security: Removed public migration endpoints
+
+Dev Validation Results:
+- 7/7 users migrated (100%)
+- 216/216 expenses migrated (improved from 187)
+- 352 journal entries created
+- All integrity checks passed
+- Zero-sum invariant maintained
 
 BREAKING CHANGES:
-- Schema adds new ledger tables
-- Requires running Phase 2 migration after deployment
-- Feature flag controls dual-write behavior
-
-Refs: Phase1-Foundation.md, Phase2-MigrationFoundation.md, Phase3-DualWriteImplementation.md"
+- Adds ledger tables to schema
+- Requires Phase 2 migration via Dashboard
+- Dual-write starts disabled, enable post-migration"
 
 # Push to remote
 git push origin master
 ```
 
-### Step 2: Deploy Convex Backend
+### Step 2: Deploy Convex Backend to Production
+
+**⚠️ IMPORTANT:** Convex projects have TWO deployments:
+- **Dev:** majestic-squirrel-400 (already migrated ✅)
+- **Prod:** graceful-spaniel-507 (deploying code now)
 
 ```bash
-# Deploy to production
-npx convex deploy --prod
+# Deploy to production (graceful-spaniel-507)
+# Note: npx convex deploy goes to PRODUCTION by default
+npx convex deploy
 
 # Expected output:
 # ✓ Deploying convex functions to production...
 # ✓ Schema validation passed
-# ✓ Functions deployed successfully
+# ✓ Deployed to https://graceful-spaniel-507.convex.cloud
 ```
 
 **Monitor the deployment output carefully:**
@@ -240,28 +243,28 @@ npx convex deploy --prod
 # Should return existing data without errors
 ```
 
-### Step 4: Initialize Accounts (Phase 1 Foundation)
+### Step 4: Run Pre-Flight Check (NEW - Recommended)
 
-**Run Account Seeding:**
+**Via Convex Dashboard:**
+1. Select **Production (graceful-spaniel-507)** deployment
+2. Navigate to **Functions** tab
+3. Find `migrations/preflightCheck:runPreflightCheck`
+4. Click **"Run"**
 
-Go to Dashboard → Functions → `migrations:seedAccounts`
-- Click "Run function"
-- This creates default accounts for all users
-- Monitor execution time (should be fast)
+**Expected Result:**
+```json
+{
+  "passed": true,
+  "issues": [...],
+  "summary": { "critical": 0, "warnings": N, "info": N }
+}
+```
 
-**Verify Account Creation:**
+**Decision:**
+- ✅ `critical: 0` → Proceed to Step 5
+- ❌ `critical: > 0` → Review issues, fix before proceeding
 
-Query the `accounts` table in the dashboard:
-- Should see accounts like "Cash/Bank", "Credit Cards", "Expenses", "Income"
-- Each user should have their own set of accounts
-- All accounts should have `softdelete: false`
-
-**Create Payment Type Mappings:**
-
-If not automatically created, verify payment types are mapped to accounts:
-- Go to `payment_type_mappings` table
-- Each existing payment type should have a corresponding account mapping
-- Default cash payment type should exist
+**Note:** Info and warning issues will be handled automatically by migration improvements
 
 ### Step 5: Run Phase 2 Migration
 
@@ -276,18 +279,17 @@ This step migrates all historical data. Monitor closely and be prepared to rollb
 - 310 journal entries created
 - 47 expenses skipped (missing mappings - expected)
 
-**Migration Approach Options:**
+**Migration Approach:**
 
-**Option A: Automated Bulk Migration (✅ RECOMMENDED - Proven in dev)**
+**✅ Via Convex Dashboard (REQUIRED - No public wrappers)**
 
-```bash
-# Via Convex CLI (if using public wrappers - see note below):
-npx convex run migrations/run:runBulkPhase2Migration --prod
+1. **Open Convex Dashboard**
+2. **Select Production (graceful-spaniel-507)** deployment
+3. **Navigate to Functions** tab
+4. **Find:** `internal.migrations.index:runBulkPhase2Migration`
+5. **Click "Run"** with arguments: `{}` (empty - uses defaults)
 
-# Or via dashboard: Call internal.migrations.index.runBulkPhase2Migration
-```
-
-**⚠️ Note:** If you removed `convex/migrations/run.ts` (public wrappers), use the dashboard to call the internal function directly.
+**⚠️ Note:** Public wrappers were removed for security. Must use dashboard for internal functions.
 
 **Option B: Manual Step-by-Step (Only if bulk migration fails)**
 
@@ -341,23 +343,22 @@ npx convex run migrations/run:runBulkPhase2Migration --prod
 
 **Migration Completion Verification:**
 
-Run diagnostic queries:
-```bash
-# Check migration status
-npx convex run diagnostics:getMigrationStatus --prod
+**Via Convex Dashboard:**
 
-# Check for errors
-npx convex run diagnostics:getLedgerErrors --prod
+1. **Run Post-Migration Verification:**
+   - Function: `migrations/verify:verifyMigrationIntegrity`
+   - Expected: `passed: true`, all critical checks pass
 
-# Verify zero-sum invariant
-npx convex run diagnostics:verifyZeroSumInvariant --prod
-```
+2. **Run Quick Health Check:**
+   - Function: `migrations/verify:quickHealthCheck`
+   - Expected: `healthy: true`, `failedMigrations: 0`
 
 **Expected Results:**
-- Migration status: "completed"
-- Error count: 0 (or review any errors individually)
-- Zero-sum check: All entries balance
+- All critical verification checks pass
+- Zero-sum invariant maintained
 - No orphaned records
+- 100% migration success rate
+- No duplicate idempotency keys
 
 **If Migration Fails:**
 
