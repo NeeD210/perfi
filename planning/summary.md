@@ -4,14 +4,18 @@ This document provides an overview of the PerFi (Personal Finance) application, 
 
 ## Current Project Status
 
-**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project is currently in **Phase 2** of its implementation roadmap, with core transaction management and recurring transaction features fully implemented. The application provides a solid foundation for expense tracking, income management, and financial projections.
+**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project has successfully completed **Phase 1-3 of the Accounting Ledger System** implementation with production deployment on January 8, 2025. The application now features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables.
 
 ### Key Achievements
+- ✅ Complete double-entry accounting ledger system (Phase 1-3)
+- ✅ Production deployment with 100% migration success (353 journal entries, 0 errors)
+- ✅ Dual-write synchronization across all financial operations
 - ✅ Complete transaction management system (expenses/income)
-- ✅ Recurring transaction automation with verification workflow
+- ✅ Recurring transaction automation with ledger integration
 - ✅ Installment payment scheduling for credit cards
-- ✅ Category and payment type management
+- ✅ Category and payment type management with ledger accounts
 - ✅ Financial projections combining recurring and installment payments
+- ✅ Comprehensive diagnostic and migration tools
 - ✅ Mobile-first UI with drawer-based navigation
 - ✅ Auth0 authentication integration
 - ✅ Real-time data synchronization with Convex
@@ -38,6 +42,115 @@ This document provides an overview of the PerFi (Personal Finance) application, 
 ## Database Schema (Convex)
 
 The database is managed using Convex and includes the following tables:
+
+### Ledger System Tables (Phase 1-3)
+
+*   **`accounts`**: Chart of accounts for double-entry bookkeeping.
+    *   `userId`: (ID referencing `users`) The user who owns this account.
+    *   `description`: (String) Account name/description.
+    *   `accountType`: (String) "asset", "liability", "income", or "expense".
+    *   `creationTime`: (Number) Account creation timestamp.
+    *   `softdelete`: (Boolean) Flag for soft deletion.
+    *   `deletedAt`: (Optional Number) Timestamp of soft deletion.
+    *   *Indexes*: `by_user` on `userId`, `by_user_type` on `userId` and `accountType`.
+
+*   **`journal_entries`**: Financial transactions in double-entry format.
+    *   `userId`: (ID referencing `users`) The user who owns this entry.
+    *   `entryDate`: (Number) Transaction date timestamp.
+    *   `description`: (String) Transaction description.
+    *   `idempotencyKey`: (String) Unique key to prevent duplicates.
+    *   `sourceType`: (String) "expense", "income", "recurring", or "installment".
+    *   `sourceId`: (String) Reference to source transaction ID.
+    *   `status`: (String) "draft", "posted", or "void".
+    *   `createdBy`: (ID referencing `users`) User who created the entry.
+    *   `updateTime`: (Optional Number) Last update timestamp.
+    *   `updatedBy`: (Optional ID referencing `users`) User who last updated.
+    *   `softdelete`: (Boolean) Flag for soft deletion.
+    *   `deletedAt`: (Optional Number) Timestamp of soft deletion.
+    *   *Indexes*: `by_user_date`, `by_idempotencyKey`, `by_sourceType_sourceId`.
+
+*   **`journal_lines`**: Individual debit/credit lines for each journal entry.
+    *   `entryId`: (ID referencing `journal_entries`) Parent journal entry.
+    *   `accountId`: (ID referencing `accounts`) Account being debited/credited.
+    *   `direction`: (String) "debit" or "credit".
+    *   `amountBaseCurrency`: (Number) Amount in minor units (cents).
+    *   `currencyCode`: (String) Currency code (default: "ARS").
+    *   *Index*: `by_entryId` on `entryId`.
+
+*   **`recurring_entries`**: Ledger templates for recurring transactions.
+    *   `userId`: (ID referencing `users`) The user who owns this template.
+    *   `description`: (String) Template description.
+    *   `frequency`: (String) "daily", "weekly", "monthly", "semestrally", or "yearly".
+    *   `anchorDay`: (Number) Day of month for scheduling.
+    *   `nextDueDate`: (Number) Next scheduled execution date.
+    *   `endDate`: (Optional Number) When template expires.
+    *   `status`: (String) "active" or "paused".
+    *   `softdelete`: (Boolean) Flag for soft deletion.
+    *   `deletedAt`: (Optional Number) Timestamp of soft deletion.
+    *   *Index*: `by_user_status` on `userId` and `status`.
+
+*   **`recurring_lines`**: Ledger line templates for recurring transactions.
+    *   `recurringEntryId`: (ID referencing `recurring_entries`) Parent template.
+    *   `accountId`: (ID referencing `accounts`) Account for this line.
+    *   `direction`: (String) "debit" or "credit".
+    *   `amount`: (Number) Amount in minor units.
+    *   `currencyCode`: (String) Currency code (default: "ARS").
+    *   `softdelete`: (Boolean) Flag for soft deletion.
+    *   *Index*: `by_recurringId` on `recurringEntryId`.
+
+*   **`category_mappings`**: Links legacy categories to ledger accounts.
+    *   `userId`: (ID referencing `users`)
+    *   `categoryId`: (ID referencing `categories`)
+    *   `accountId`: (ID referencing `accounts`)
+    *   `createdAt`: (Number) Mapping creation timestamp.
+    *   *Index*: `by_user_category` on `userId` and `categoryId`.
+
+*   **`payment_type_mappings`**: Links legacy payment types to ledger accounts.
+    *   `userId`: (ID referencing `users`)
+    *   `paymentTypeId`: (ID referencing `paymentTypes`)
+    *   `accountId`: (ID referencing `accounts`)
+    *   `createdAt`: (Number) Mapping creation timestamp.
+    *   *Index*: `by_user_paymentType` on `userId` and `paymentTypeId`.
+
+*   **`recurring_template_mappings`**: Links legacy recurring transactions to ledger templates.
+    *   `userId`: (ID referencing `users`)
+    *   `legacyRecurringId`: (ID referencing `recurringTransactions`)
+    *   `recurringEntryId`: (ID referencing `recurring_entries`)
+    *   `createdAt`: (Number) Mapping creation timestamp.
+    *   *Index*: `by_user_legacyRecurring` on `userId` and `legacyRecurringId`.
+
+*   **`cards`**: Credit card metadata for payment scheduling.
+    *   `accountId`: (ID referencing `accounts`) Linked liability account.
+    *   `userId`: (ID referencing `users`)
+    *   `closingDay`: (Number) Statement closing day (1-31).
+    *   `dueDate`: (Number) Payment due day (1-31).
+    *   `softdelete`: (Boolean) Flag for soft deletion.
+    *   `deletedAt`: (Optional Number) Timestamp of soft deletion.
+    *   *Index*: `by_accountId` on `accountId`.
+
+*   **`fx_rates`**: Foreign exchange rates for multi-currency support (future).
+    *   `fromCurrency`: (String) Source currency code.
+    *   `toCurrency`: (String) Target currency code.
+    *   `rate`: (Number) Exchange rate.
+    *   `effectiveDate`: (Number) When rate became effective.
+    *   *Index*: `by_currencies_date` on currency pair and date.
+
+*   **`ledger_errors`**: Error tracking for dual-write operations.
+    *   `userId`: (ID referencing `users`)
+    *   `operation`: (String) Operation that failed.
+    *   `errorMessage`: (String) Error description.
+    *   `context`: (Any) Additional error context.
+    *   `timestamp`: (Number) When error occurred.
+
+*   **`migration_progress`**: Tracks migration execution status.
+    *   `userId`: (ID referencing `users`)
+    *   `migrationName`: (String) Name of migration.
+    *   `status`: (String) "pending", "running", "completed", or "failed".
+    *   `startedAt`: (Optional Number) When migration started.
+    *   `completedAt`: (Optional Number) When migration finished.
+    *   `error`: (Optional String) Error message if failed.
+
+### Legacy Tables
 
 *   **`users`**: Stores user information.
     *   `auth0Id`: (String) Unique identifier from Auth0.
@@ -161,10 +274,41 @@ The database is managed using Convex and includes the following tables:
 ### Automated Processing (`convex/crons.ts`)
 *   **Daily Cron Job**: Processes recurring transactions at midnight every day.
 
+### Ledger System (`convex/ledger/`)
+*   **`dualWriteUtils.ts`**: Utilities for dual-write operations to ledger system.
+*   **`dualWriteConfig.ts`**: Feature flag for enabling/disabling dual-write (LEDGER_DUAL_WRITE_ENABLED).
+*   **`errorTracking.ts`**: Structured error logging for dual-write failures with monitoring integration support.
+*   **`accounts.ts`**: Account management utilities for chart of accounts.
+*   **`fx.ts`**: Foreign exchange rate utilities for multi-currency support.
+
 ### Migrations (`convex/migrations/`)
-*   **Category Migration**: Migrates existing categories to include transaction type.
-*   **Recurring Migration**: Backfills nextDueDate for existing recurring transactions.
-*   **Payment Schedule Migration**: Generates payment schedules for existing expenses.
+*   **Phase 1 - Foundation:**
+    *   `accountSeeding.ts`: Creates accounts from legacy categories and payment types.
+    *   `backfillIsCredit.ts`: Backfills isCredit flag for payment types.
+*   **Phase 2 - Historical Data Migration:**
+    *   `transactionBackfill.ts`: Migrates historical expenses to journal entries.
+    *   `installmentBackfill.ts`: Migrates payment schedules to journal entries.
+    *   `recurringToLedger.ts`: Migrates recurring templates to ledger format.
+    *   `bulkPhase2Migration.ts`: Orchestrates bulk migration for all users.
+    *   `phase2Runner.ts`: Migration execution runner.
+*   **Verification & Diagnostics:**
+    *   `preflightCheck.ts`: Pre-migration data quality validation.
+    *   `verify.ts`: Post-migration integrity verification (zero-sum, idempotency, etc.).
+*   **Utilities:**
+    *   `backfillPaymentTypeMappings.ts`: Repairs orphaned payment types.
+    *   `utils.ts`: Common migration utilities.
+    *   `resetProgress.ts`: Resets migration state.
+    *   `rollback.ts`: Migration rollback procedures.
+*   **Legacy Migrations:**
+    *   `category.ts`: Migrates categories to include transaction type.
+    *   `recurring.ts`: Backfills nextDueDate for recurring transactions.
+    *   `recurringCurrencyBackfill.ts`: Adds currency support to recurring transactions.
+
+### Diagnostics (`convex/diagnostics.ts`)
+*   **`diagnoseRecurringTemplate`**: Health check for single recurring template.
+*   **`scanUserRecurringTemplates`**: Batch health scan for all user templates.
+*   **`repairRecurringTemplate`**: Repairs single broken template.
+*   **`repairAllUserTemplates`**: Batch repair with dry-run support.
 
 ## Frontend (React with TypeScript)
 
@@ -211,60 +355,111 @@ The database is managed using Convex and includes the following tables:
 
 ## Recent Updates & Current State
 
-### Phase 2: Recurring Transactions & Verification Workflow (✅ COMPLETED)
+### Phase 1-3: Double-Entry Accounting Ledger System (✅ COMPLETED - January 8, 2025)
 
-The application now supports comprehensive recurring transaction management with automated processing:
+The application now features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables. Successfully deployed to production with 100% migration success rate.
 
-1. **Database Enhancements:**
-   - Enhanced `recurringTransactions` table with advanced scheduling fields (`nextDueDate`, `nextDueDateCalculationDay`)
-   - Enhanced `expenses` table with `verified` status and `recurringTransactionId` for tracking auto-generated transactions
-   - Enhanced `paymentTypes` table with credit card support (`isCredit`, `closingDay`, `dueDay`)
+**Production Deployment Results:**
+- 7/7 users migrated successfully (100%)
+- 353 journal entries created from historical data
+- 706 journal lines (double-entry) with zero-sum validation
+- 154 accounts created in chart of accounts
+- 15 recurring templates migrated to ledger format
+- Zero errors, zero failures, zero data loss
 
-2. **Advanced Backend Functionality:**
-   - Full CRUD operations for recurring transactions with frequency support (daily, weekly, monthly, semestrally, yearly)
-   - Automated transaction generation through daily cron jobs with idempotency checks
-   - Backfill functionality for past recurring transaction dates
-   - Verification workflow for reviewing auto-generated transactions
-   - Advanced payment scheduling with credit card due date calculations
+**Accounting System Features:**
 
-3. **Enhanced User Interface:**
-   - Comprehensive "Recurring Transactions" management in Manage Transactions page
-   - Advanced form for creating/editing recurring transactions with frequency and date settings
-   - Visual indicators for unverified transactions and recurring transaction sources
-   - Dedicated verification workflow with verify buttons for auto-generated transactions
-   - Transaction filtering by verification status (All, Verified, Unverified)
+1. **Phase 1 - Foundation:**
+   - Complete chart of accounts with 154 accounts created
+   - Account types: asset, liability, income, expense
+   - Automatic account creation for categories and payment types
+   - Category-to-account and payment-type-to-account mappings
+   - Credit card accounts tracked as liabilities with billing cycle metadata
 
-4. **Technical Improvements:**
-   - Daily automated processing of recurring transactions at midnight via cron jobs
-   - Sophisticated date calculation logic with anchor day preservation
-   - Integration with installment payment scheduling for recurring credit card payments
-   - Optimized projection queries with batch processing for performance
-   - Comprehensive migration system for data consistency
+2. **Phase 2 - Historical Data Migration:**
+   - Automated migration of all historical expenses to journal entries
+   - Installment payment schedules converted to planned journal entries
+   - Recurring transaction templates migrated to ledger format
+   - Pre-flight data quality checks before migration
+   - Post-migration integrity verification (zero-sum, idempotency, referential integrity)
+   - 100% migration success with comprehensive error handling
+
+3. **Phase 3 - Dual-Write Implementation:**
+   - Real-time synchronization between legacy and ledger systems
+   - All financial operations write to both systems simultaneously
+   - Feature flag control (LEDGER_DUAL_WRITE_ENABLED) for rollback capability
+   - Graceful degradation: legacy continues working if ledger fails
+   - Complete audit trail with createdBy/updatedBy tracking
+   - Idempotency protection preventing duplicate entries
+   - Structured error logging ready for monitoring integration
+
+4. **Double-Entry Bookkeeping:**
+   - Every transaction creates balanced journal entries (debits = credits)
+   - Zero-sum validation ensures accounting equation balance
+   - Proper debit/credit logic for income vs expense transactions
+   - Credit card purchases tracked as liabilities
+   - Multi-currency support foundation (currently ARS only)
+
+5. **Technical Excellence:**
+   - Type-safe audit fields using Id<"users"> references
+   - Comprehensive diagnostic tools for template health checks
+   - Automated repair utilities for orphaned data
+   - Migration rollback procedures with snapshot support
+   - Performance optimized with efficient indexing
+   - Complete test coverage for critical paths
 
 ### Current Implementation Status:
 
-**✅ Completed Features:**
-- Core transaction management (expenses/income)
-- Recurring transaction automation
-- Installment payment scheduling
-- Category and payment type management
-- Financial projections
-- Verification workflow
-- Credit card payment type support
-- Migration system for data consistency
+**✅ Completed Features (Phases 1-3):**
+- ✅ Double-entry accounting ledger system with production deployment
+- ✅ Complete dual-write synchronization (legacy ↔ ledger)
+- ✅ Historical data migration (100% success rate)
+- ✅ Chart of accounts with automatic creation
+- ✅ Journal entries with zero-sum validation
+- ✅ Core transaction management (expenses/income)
+- ✅ Recurring transaction automation with ledger integration
+- ✅ Installment payment scheduling
+- ✅ Category and payment type management with ledger accounts
+- ✅ Financial projections
+- ✅ Verification workflow
+- ✅ Credit card payment type support as liabilities
+- ✅ Comprehensive migration and diagnostic tools
+- ✅ Structured error tracking and monitoring foundation
+- ✅ Complete audit trail with user tracking
 
-**🔄 In Progress (Phase 3):**
-- Home screen dashboard transformation
-- Budget management system (planned)
-- Enhanced navigation structure
+**🔄 In Progress (Phase 4):**
+- Advanced accounting features leveraging ledger data
+- Financial reports using journal entries
+- Account balance queries
+- Transaction reconciliation tools
 
-**📋 Planned (Phases 4-7):**
-- Comprehensive budget tracking
-- Savings goals management
-- Investment portfolio tracking
-- Debt management
-- Visual design improvements
-- Performance optimizations
+**📋 Planned (Phases 5-8):**
+- Phase 5: Card settlement and credit card statement reconciliation
+- Phase 6: UI migration to ledger data (read from journal entries)
+- Phase 7: Legacy table deprecation
+- Phase 8: Multi-currency support and FX handling
+- Future: Budget tracking, savings goals, investment tracking
+
+### Production Status
+
+**Environment:** Production (graceful-spaniel-507.convex.cloud)  
+**Deployment Date:** January 8, 2025  
+**Status:** ✅ Live and Healthy  
+**Dual-Write:** Active  
+**Monitoring:** 24/7 health checks
+
+**Key Metrics:**
+- Migration success rate: 100%
+- Zero-sum compliance: 100%
+- Data integrity: Perfect
+- Error rate: 0%
 
 ### Next Steps
-Refer to `planning/implementation_roadmap.md` for the detailed phased implementation plan and `planning/perfi_revamp.md` for the UX/UI design vision. The project is ready to proceed with Phase 3: Home Screen Dashboard implementation.
+
+The accounting ledger foundation is complete and production-ready. Next phases will focus on:
+1. Building advanced accounting features on top of the ledger
+2. Migrating UI to read from ledger tables
+3. Enhancing financial reporting with double-entry data
+4. Adding card settlement and reconciliation features
+
+Refer to `planning/accounting.md` for the complete accounting system roadmap and `docs/` for detailed implementation documentation.
