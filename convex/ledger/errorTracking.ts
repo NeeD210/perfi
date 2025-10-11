@@ -1,9 +1,9 @@
 /**
- * Error tracking utilities for dual-write operations
+ * Error tracking utilities for dual-write operations and exchange rates
  * 
- * This module provides structured error logging for ledger dual-write failures.
- * In the future, this can be extended to integrate with error tracking services
- * like Sentry, Datadog, or similar platforms.
+ * This module provides structured error logging for ledger dual-write failures
+ * and exchange rate operations. In the future, this can be extended to integrate 
+ * with error tracking services like Sentry, Datadog, or similar platforms.
  */
 
 export interface DualWriteError {
@@ -14,6 +14,20 @@ export interface DualWriteError {
   errorMessage: string;
   errorStack?: string;
   timestamp: number;
+  context?: Record<string, any>;
+}
+
+export interface ExchangeRateError {
+  operation: string;
+  provider?: string;
+  currencyPair?: string;
+  userId?: string;
+  errorMessage: string;
+  errorStack?: string;
+  timestamp: number;
+  errorType: 'API_UNAVAILABLE' | 'RATE_LIMIT_EXCEEDED' | 'INVALID_RESPONSE' | 
+            'RATE_VALIDATION_FAILED' | 'NETWORK_ERROR' | 'PROVIDER_ERROR' | 
+            'TIMEOUT' | 'INVALID_CURRENCY_PAIR';
   context?: Record<string, any>;
 }
 
@@ -90,6 +104,53 @@ export function logDualWriteSkip(operation: string, reason: string, sourceId: st
     sourceId,
     timestamp: Date.now(),
   }));
+}
+
+/**
+ * Log an exchange rate error with structured information
+ */
+export function logExchangeRateError(error: ExchangeRateError): void {
+  const structuredError = {
+    level: "error",
+    component: "exchange-rate",
+    ...error,
+  };
+
+  // Console logging with JSON structure for easy parsing
+  console.error("[EXCHANGE-RATE-ERROR]", JSON.stringify(structuredError, null, 2));
+
+  // TODO: Future enhancements
+  // - Store in convex table: await ctx.db.insert("exchange_rate_errors", error);
+  // - Send to Sentry: Sentry.captureException(err, { tags: { component: "exchange-rate" } });
+  // - Trigger alert if critical: await sendAlert(error);
+  // - Update metrics: incrementExchangeRateErrorCounter(error.errorType);
+}
+
+/**
+ * Wrap exchange rate operations with error tracking
+ */
+export async function trackExchangeRateOperation<T>(
+  operation: string,
+  provider: string,
+  currencyPair: string,
+  fn: () => Promise<T>,
+  additionalContext?: Record<string, any>
+): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (err) {
+    logExchangeRateError({
+      operation,
+      provider,
+      currencyPair,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      errorStack: err instanceof Error ? err.stack : undefined,
+      timestamp: Date.now(),
+      errorType: 'PROVIDER_ERROR',
+      context: additionalContext,
+    });
+    return null;
+  }
 }
 
 

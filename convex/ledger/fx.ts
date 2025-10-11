@@ -145,34 +145,20 @@ export const getRateForDate = internalQuery({
     v.object({
       rate: v.number(),
       id: v.id("exchange_rates"),
+      source: v.string(),
     }),
     v.null()
   ),
-  handler: async (ctx, args): Promise<{ rate: number; id: Id<"exchange_rates"> } | null> => {
+  handler: async (ctx, args): Promise<{ rate: number; id: Id<"exchange_rates">; source: string } | null> => {
     const { pairCurrency, date } = args;
 
-    // Get start and end of day (UTC)
-    const startOfDay = new Date(date);
-    startOfDay.setUTCHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setUTCHours(23, 59, 59, 999);
+    // Use the new exchange rate service to get rate for specific date
+    const rate = await ctx.runQuery(internal.exchangeRates.getRateForDate, {
+      pairCurrency,
+      date,
+    });
 
-    const startTime = startOfDay.getTime();
-    const endTime = endOfDay.getTime();
-
-    // Query for rate within the day
-    const rates = await ctx.db
-      .query("exchange_rates")
-      .withIndex("by_pair_date_source", (q) =>
-        q.eq("pairCurrency", pairCurrency).gte("date", startTime).lte("date", endTime)
-      )
-      .take(1);
-
-    if (rates.length === 0) {
-      return null;
-    }
-
-    return { rate: rates[0].rate, id: rates[0]._id };
+    return rate;
   },
 });
 
@@ -188,43 +174,28 @@ export const storeExchangeRate = internalMutation({
   handler: async (ctx, args): Promise<Id<"exchange_rates">> => {
     const { pairCurrency, rate, date, source } = args;
 
-    // Validate rate is positive
-    if (rate <= 0) {
-      throw new Error("Exchange rate must be positive");
-    }
-
-    // Calculate inverse rate
-    const inverseRate = 1 / rate;
-
-    // Store both rate and inverse
-    const rateId = await ctx.db.insert("exchange_rates", {
+    // Use the new exchange rate service to store the rate
+    await ctx.runMutation(internal.exchangeRates.storeRate, {
       pairCurrency,
       rate,
-      inverseRate,
+      inverseRate: 1 / rate,
       date,
       source,
     });
 
-    // Also store the inverse pair if it doesn't exist
-    const inversePair = createInversePair(pairCurrency);
-    const existingInverse = await ctx.db
+    // Find and return the stored rate ID
+    const storedRate = await ctx.db
       .query("exchange_rates")
       .withIndex("by_pair_date_source", (q) =>
-        q.eq("pairCurrency", inversePair).eq("date", date).eq("source", source)
+        q.eq("pairCurrency", pairCurrency).eq("date", date).eq("source", source)
       )
       .first();
 
-    if (!existingInverse) {
-      await ctx.db.insert("exchange_rates", {
-        pairCurrency: inversePair,
-        rate: inverseRate,
-        inverseRate: rate,
-        date,
-        source,
-      });
+    if (!storedRate) {
+      throw new Error("Failed to store exchange rate");
     }
 
-    return rateId;
+    return storedRate._id;
   },
 });
 
@@ -316,13 +287,48 @@ export const getExchangeRateForDate = query({
     v.object({
       rate: v.number(),
       id: v.id("exchange_rates"),
+      source: v.string(),
     }),
     v.null()
   ),
-  handler: async (ctx, args): Promise<{ rate: number; id: Id<"exchange_rates"> } | null> => {
+  handler: async (ctx, args): Promise<{ rate: number; id: Id<"exchange_rates">; source: string } | null> => {
     const pairCurrency = `${args.fromCurrency}/${args.toCurrency}`;
     return await ctx.runQuery(internal.ledger.fx.getRateForDate, {
       pairCurrency,
+      date: args.date,
+    });
+  },
+});
+
+// Public query to get current exchange rate with on-demand fetching
+export const getCurrentExchangeRate = query({
+  args: {
+    fromCurrency: v.string(),
+    toCurrency: v.string(),
+    date: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(internal.exchangeRates.getExchangeRate, {
+      fromCurrency: args.fromCurrency,
+      toCurrency: args.toCurrency,
+      date: args.date,
+    });
+  },
+});
+
+// Public query to convert amount using current exchange rate
+export const convertAmountPublic = query({
+  args: {
+    amount: v.number(),
+    fromCurrency: v.string(),
+    toCurrency: v.string(),
+    date: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(internal.exchangeRates.convertAmount, {
+      amount: args.amount,
+      fromCurrency: args.fromCurrency,
+      toCurrency: args.toCurrency,
       date: args.date,
     });
   },

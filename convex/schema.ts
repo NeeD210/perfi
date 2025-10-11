@@ -169,7 +169,9 @@ export default defineSchema({
     date: v.number(), // epoch ms (UTC day boundary)
     source: v.string(), // provider ID
   })
-    .index("by_pair_date_source", ["pairCurrency", "date", "source"]),
+    .index("by_pair_date_source", ["pairCurrency", "date", "source"])
+    .index("by_pair_date", ["pairCurrency", "date"]) // For date-specific rate queries
+    .index("by_source_date", ["source", "date"]), // For provider-specific queries
 
   cards: defineTable({
     accountId: v.id("accounts"), // PK & FK
