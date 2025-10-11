@@ -7,6 +7,7 @@
 
 import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 
 // Rate validation rules for major currency pairs
 const RATE_VALIDATION_RULES = {
