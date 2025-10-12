@@ -4,7 +4,7 @@ This document provides an overview of the PerFi (Personal Finance) application, 
 
 ## Current Project Status
 
-**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project has successfully completed **Phase 1-4.2 of the Accounting Ledger System** implementation. The application features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables (production deployment: January 8, 2025), includes a complete account-to-account transfer system with cross-currency support (completed: October 11, 2025), and now has a comprehensive flexible budget system with real-time execution tracking (completed and deployed to production: October 12, 2025). Current focus: Phase 4.3 Budget Historical Tracking & Phase 4.4 Pre-Aggregation System.
+**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project has successfully completed **Phase 1-4.4 of the Accounting Ledger System** implementation. The application features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables (production deployment: January 8, 2025), includes a complete account-to-account transfer system with cross-currency support (completed: October 11, 2025), has a comprehensive flexible budget system with real-time execution tracking (completed and deployed to production: October 12, 2025), includes budget historical tracking with automated period rollover (completed: January 15, 2025), and now features a pre-aggregation system with monthly rollups for performance optimization (completed: January 15, 2025). Current focus: Phase 4.5 UI Integration and Phase 5 Card Settlement.
 
 ### Key Achievements
 - ✅ Complete double-entry accounting ledger system (Phase 1-3)
@@ -12,6 +12,7 @@ This document provides an overview of the PerFi (Personal Finance) application, 
 - ✅ Dual-write synchronization across all financial operations
 - ✅ **Account-to-account transfer system with cross-currency support (Phase 4.1)**
 - ✅ **Flexible budget system with three scope types and real-time execution tracking (Phase 4.2) - PRODUCTION DEPLOYED**
+- ✅ **Budget historical tracking with automated period rollover and cron jobs (Phase 4.3) - COMPLETED**
 - ✅ Complete transaction management system (expenses/income)
 - ✅ Recurring transaction automation with ledger integration
 - ✅ Installment payment scheduling for credit cards
@@ -40,6 +41,154 @@ This document provides an overview of the PerFi (Personal Finance) application, 
 **Testing:**
 - Playwright for E2E testing
 - Vitest for unit testing
+
+## Core Codebase Guidelines & Non-Functional Requirements (NFRs)
+
+This section codifies the architectural standards, constraints, and best practices learned from Phase 4.4 implementation and audit findings. These guidelines serve as the single source of truth for all future development phases.
+
+### Critical System Testing Standards
+
+**MANDATORY REQUIREMENTS:**
+- **Test Coverage Threshold**: All critical systems (rollups, reconciliation, aggregation) must achieve >85% line coverage before production deployment
+- **Integration Test Coverage**: All rollup creation/update flows must have comprehensive integration tests
+- **Performance Test Coverage**: All performance-critical queries must have benchmarks validating < 1s dashboard, < 200ms budget execution targets
+- **Edge Case Testing**: All functions must include tests for boundary conditions, error states, and concurrent operations
+
+**ENFORCEMENT:**
+- No production deployment without meeting test coverage thresholds
+- All rollup functions must have unit tests for idempotency and correctness
+- All reconciliation jobs must have integration tests with multiple accounts
+- All query optimizations must have performance benchmarks
+
+### Function Size & Modularity Standards
+
+**MANDATORY REQUIREMENTS:**
+- **Function Size Limit**: Functions must not exceed 50 lines of code
+- **Large Function Refactoring**: Functions exceeding 50 lines must be split into helper functions
+- **Single Responsibility**: Each function must have a single, well-defined responsibility
+- **Code Reuse**: Never duplicate logic when existing functions are available
+
+**ENFORCEMENT:**
+- Code review must reject functions exceeding 50 lines
+- Refactor large functions before merging to main branch
+- Extract helper functions for complex logic
+- Always call existing functions instead of duplicating logic
+
+### Type Safety Standards
+
+**MANDATORY REQUIREMENTS:**
+- **Eliminate `any` Types**: All `any` types must be replaced with proper Convex types
+- **Convex Type Usage**: Use `QueryCtx`, `MutationCtx`, `ActionCtx` instead of generic types
+- **Type Validation**: All function parameters must use Convex `v` validators
+- **Return Type Safety**: All functions must have explicit return type annotations
+
+**ENFORCEMENT:**
+- TypeScript strict mode must be enabled
+- Linting must fail on `any` type usage
+- All internal functions must use proper Convex context types
+- Type safety violations block production deployment
+
+### Field Name Consistency Standards
+
+**MANDATORY REQUIREMENTS:**
+- **Schema Field Usage**: Always use exact field names from database schema
+- **Aggregation Field Names**: Use `amountBaseCurrency` for journal line amounts, not `debitAmount`/`creditAmount`
+- **Consistent Naming**: Maintain consistent field naming across all aggregation logic
+- **Field Validation**: Validate field names against schema before use
+
+**ENFORCEMENT:**
+- Code review must verify field name consistency
+- Runtime errors from incorrect field names are P0 critical bugs
+- All aggregation functions must reference schema field names
+- Field name mismatches block production deployment
+
+### Convex Platform Constraints & Best Practices
+
+**MANDATORY REQUIREMENTS:**
+- **Cron Job Timeout**: All cron jobs must complete within 9 minutes (safety margin for 10-minute limit)
+- **Batch Processing**: Process large datasets in batches of 100 accounts (reduces to 50 if memory pressure)
+- **Memory Management**: Monitor memory usage during large operations
+- **Progress Saving**: Long-running jobs must save progress and support resume capability
+- **Timeout Handling**: Implement 9-minute timeout safety margin for all long operations
+
+**ENFORCEMENT:**
+- All cron jobs must have timeout handling
+- Batch size must be configurable based on memory constraints
+- Progress tracking must be implemented for jobs > 5 minutes
+- Memory usage monitoring required for large operations
+
+### Concurrent Operation Handling
+
+**MANDATORY REQUIREMENTS:**
+- **Atomic Operations**: Use atomic operations to prevent race conditions
+- **Idempotent Functions**: All rollup functions must be idempotent
+- **Concurrent Safety**: Handle concurrent updates between synchronous operations and background jobs
+- **Race Condition Prevention**: Use proper locking mechanisms for shared resources
+
+**ENFORCEMENT:**
+- All rollup operations must be atomic
+- Idempotency must be tested and verified
+- Concurrent operation tests required
+- Race condition prevention must be validated
+
+### Error Recovery & Graceful Degradation Standards
+
+**MANDATORY REQUIREMENTS:**
+- **Retry Policies**: Implement exponential backoff retry policies (3 attempts: 1s, 2s, 4s delays)
+- **Graceful Degradation**: System must continue operating when rollup updates fail
+- **Error Logging**: All errors must be logged with transaction ID and context
+- **Fallback Mechanisms**: All rollup-dependent queries must have direct calculation fallback
+- **Recovery Procedures**: Failed operations must be automatically retried by reconciliation jobs
+
+**ENFORCEMENT:**
+- All rollup operations must have retry policies
+- Transaction mutations must succeed even if rollup updates fail
+- Comprehensive error logging required
+- Fallback mechanisms must be tested and validated
+
+### Performance Standards
+
+**MANDATORY REQUIREMENTS:**
+- **Home Dashboard**: < 1 second load time for users with 1000+ transactions
+- **Budget Execution**: < 200ms query time for budgets with 10+ accounts
+- **Reconciliation Job**: < 5 minutes completion time for 1000+ accounts
+- **Rollup Updates**: < 100ms per transaction mutation
+- **Query Optimization**: All queries must use appropriate indexes
+
+**ENFORCEMENT:**
+- Performance benchmarks must be met before production deployment
+- Query optimization required for all rollup-dependent operations
+- Performance regression testing required for all changes
+- Index usage must be validated and optimized
+
+### Data Consistency Standards
+
+**MANDATORY REQUIREMENTS:**
+- **Drift Detection**: Rollup values must match direct calculation within 0.01% tolerance
+- **Consistency Validation**: Spot-check validation comparing rollup vs direct calculation
+- **Reconciliation**: Daily reconciliation job must correct all identified drift
+- **Data Integrity**: No missing rollup records for active accounts and recent months
+
+**ENFORCEMENT:**
+- Drift detection must be implemented and monitored
+- Consistency validation required for all rollup data
+- Reconciliation job must complete successfully daily
+- Data integrity violations are P0 critical issues
+
+### Monitoring & Observability Standards
+
+**MANDATORY REQUIREMENTS:**
+- **Success Rate Monitoring**: Rollup update success rate must be >95%
+- **Performance Metrics**: Track query performance (rollup vs direct calculation)
+- **Health Monitoring**: Monitor rollup data freshness and reconciliation job status
+- **Alerting**: Alert on drift >1%, success rate <90%, stale data >48 hours
+- **Operational Visibility**: Rollup metrics must be visible in Convex dashboard
+
+**ENFORCEMENT:**
+- Monitoring must be implemented before production deployment
+- Alerting thresholds must be configured and tested
+- Operational dashboards must be available
+- Health monitoring must be continuous and automated
 
 ## Database Schema (Convex)
 
@@ -153,7 +302,7 @@ The database is managed using Convex and includes the following tables:
     *   `description`: (Optional String) Budget description (max 500 characters).
     *   *Indexes*: `by_user` on `userId`, `by_accountId` on `accountId`, `by_user_active` on `userId` and `softdelete` and `creationTime`, `by_nextDueDate` on `nextDueDate`.
 
-*   **`budget_lines`**: Historical budget execution records (Phase 4.2 - Schema Ready for Phase 4.3).
+*   **`budget_lines`**: Historical budget execution records (Phase 4.3 - COMPLETED).
     *   `budgetId`: (ID referencing `budgets`) Parent budget.
     *   `periodStart`: (Number) Period start timestamp.
     *   `periodEnd`: (Number) Period end timestamp.
@@ -164,6 +313,19 @@ The database is managed using Convex and includes the following tables:
     *   `status`: (String) "under_budget", "at_budget", or "over_budget".
     *   `createdAt`: (Number) Record creation timestamp.
     *   *Indexes*: `by_budgetId_periodStart` on `budgetId` and `periodStart`, `by_budgetId` on `budgetId`.
+
+*   **`monthly_rollups`**: Pre-calculated monthly aggregates by account for performance optimization (Phase 4.4).
+    *   `userId`: (ID referencing `users`) User partition for multi-tenancy.
+    *   `accountId`: (ID referencing `accounts`) Account reference.
+    *   `month`: (Number) Epoch ms of month start (1st day 00:00:00 UTC).
+    *   `totalDebits`: (Number) Sum of debit lines in month (minor units).
+    *   `totalCredits`: (Number) Sum of credit lines in month (minor units).
+    *   `netAmount`: (Number) totalCredits - totalDebits (can be negative).
+    *   `transactionCount`: (Number) Number of journal_lines in month.
+    *   `lastUpdated`: (Number) Epoch ms when rollup was last updated.
+    *   `lastReconciled`: (Number) Epoch ms when rollup was last reconciled.
+    *   `createdAt`: (Number) Epoch ms when rollup record was created.
+    *   *Indexes*: `by_user_month` on `userId` and `month desc`, `by_account_month` on `accountId` and `month desc`, `by_user_account_month` on `userId`, `accountId`, and `month desc`, `by_month` on `month desc`, `by_last_reconciled` on `lastReconciled asc`.
 
 *   **`ledger_errors`**: Error tracking for dual-write operations.
     *   `userId`: (ID referencing `users`)
@@ -316,6 +478,20 @@ The database is managed using Convex and includes the following tables:
 *   **`calculatePeriodBoundaries`**: Calculates period start and end timestamps for all supported frequencies (daily through yearly) aligned to calendar boundaries in UTC.
 *   **`calculateNextDueDate`**: Determines next period start date for budget rollover calculations.
 
+### Budget Historical Tracking (`convex/ledger/budgetHistory.ts`)
+*   **`getBudgetHistory` (query)**: Retrieves historical budget execution records for a budget with pagination and date filtering.
+*   **`getBudgetHistoryWithCurrent` (query)**: Historical data plus current period execution (real-time calculation).
+*   **`backfillBudgetHistory` (mutation)**: Manually backfill missing historical budget lines for specific periods.
+
+### Pre-Aggregation System (`convex/ledger/rollups.ts`)
+*   **`upsertMonthlyRollup` (internal mutation)**: Create or update monthly rollup record with idempotency guarantees.
+*   **`calculateMonthlyRollup` (internal query)**: Calculate monthly rollup data for an account from journal_lines.
+*   **`reconcileMonthlyRollups` (internal action)**: Background job that reconciles all monthly rollups to ensure consistency.
+*   **`updateRollupsOnTransaction` (internal mutation)**: Update rollups when transactions are created/modified (best-effort synchronous updates).
+
+### Monthly Summary (`convex/ledger/monthlySummary.ts`)
+*   **`getMonthlySummary` (query)**: Retrieve monthly financial summary using rollup data with fallback to direct calculation.
+
 ### Internal Functions (`convex/internal/`)
 *   **`generatePaymentSchedules` (internal mutation)**: Consolidated function for generating installment payment schedules.
 *   **`deletePaymentSchedulesForExpense` (internal mutation)**: Removes payment schedules for a specific expense.
@@ -323,6 +499,8 @@ The database is managed using Convex and includes the following tables:
 
 ### Automated Processing (`convex/crons.ts`)
 *   **Daily Cron Job**: Processes recurring transactions at midnight every day.
+*   **Budget Period Rollover**: Automated background job capturing budget execution at period boundaries.
+*   **Rollup Reconciliation**: Daily cron job running at 02:00 UTC to reconcile monthly rollups and ensure consistency.
 
 ### Ledger System (`convex/ledger/`)
 *   **`dualWriteUtils.ts`**: Utilities for dual-write operations to ledger system.
@@ -400,10 +578,32 @@ The database is managed using Convex and includes the following tables:
 
 ### Current Test Coverage:
 *   **Scheduling Logic**: Comprehensive unit tests for payment scheduling, date calculations, and installment splitting.
+*   **Budget Historical Tracking**: Unit tests for period boundary calculations, next due date calculations, and period range generation.
 *   **UI Components**: E2E tests for accordion interactions and transaction list functionality.
 *   **Critical Flows**: Basic coverage for core transaction management workflows.
 
 ## Recent Updates & Current State
+
+### Phase 4.3: Budget Historical Tracking Implementation (✅ COMPLETED - January 15, 2025)
+
+The application now includes comprehensive budget historical tracking with automated period rollover and cron job processing. This system captures budget execution snapshots at period boundaries, enabling trend analysis and historical reporting.
+
+**Budget Historical Tracking Features:**
+- **Automated Period Rollover**: Background cron job captures budget execution at period boundaries
+- **Historical Data Storage**: Budget_lines table populated with execution snapshots for trend analysis
+- **Time-Series Queries**: Historical query endpoints showing budget performance over time
+- **Period Boundary Calculations**: Comprehensive support for all six budget frequencies with UTC alignment
+- **Graceful Handling**: Proper handling of budget modifications and period transitions
+- **Backfill Utilities**: Manual backfill capabilities for missing historical data
+- **Performance Optimized**: Efficient pagination and date filtering for large historical datasets
+
+**Technical Implementation:**
+- Budget_lines table populated with historical execution records
+- Automated cron job processing budget period rollovers
+- Comprehensive period boundary calculation utilities
+- Historical query functions with pagination support
+- Backfill mutation for missing historical data
+- Complete unit test coverage for period calculations
 
 ### Phase 4.2: Budget System Implementation (✅ COMPLETED & DEPLOYED TO PRODUCTION - October 12, 2025)
 
@@ -513,7 +713,7 @@ The application features a complete double-entry bookkeeping system with dual-wr
 
 ### Current Implementation Status:
 
-**✅ Completed Features (Phases 1-4.2):**
+**✅ Completed Features (Phases 1-4.4):**
 - ✅ Double-entry accounting ledger system with production deployment
 - ✅ Complete dual-write synchronization (legacy ↔ ledger)
 - ✅ Historical data migration (100% success rate)
@@ -521,6 +721,8 @@ The application features a complete double-entry bookkeeping system with dual-wr
 - ✅ Journal entries with zero-sum validation
 - ✅ **Account-to-account transfers with cross-currency support (Phase 4.1)**
 - ✅ **Flexible budget system with three scope types and real-time execution (Phase 4.2)**
+- ✅ **Budget historical tracking with automated period rollover (Phase 4.3)**
+- ✅ **Pre-aggregation system with monthly rollups and performance optimization (Phase 4.4)**
 - ✅ Core transaction management (expenses/income)
 - ✅ Recurring transaction automation with ledger integration
 - ✅ Installment payment scheduling
@@ -532,18 +734,7 @@ The application features a complete double-entry bookkeeping system with dual-wr
 - ✅ Structured error tracking and monitoring foundation
 - ✅ Complete audit trail with user tracking
 
-**🔄 In Progress (Phase 4.3-4.4):**
-- 🔄 Phase 4.3: Budget Historical Tracking (IN PLANNING)
-  - Automated background job capturing budget execution at period boundaries
-  - Budget_lines table populated with historical execution snapshots
-  - Historical query endpoints showing budget performance over time
-  - Time-series data enabling trend analysis and pattern recognition
-  - Support for all six budget frequencies with graceful handling of budget modifications
-- 🔄 Phase 4.4: Pre-Aggregation System (IN PLANNING)
-  - Monthly rollups table for performance optimization
-  - Background job for rollup reconciliation
-  - Best-effort synchronous updates on transactions
-  - Home dashboard integration using pre-aggregated data
+**🔄 In Progress (Phase 4.5):**
 - 🔄 Phase 4.5: UI Integration (IN PLANNING)
   - Budget management UI components
   - Budget execution display in Home dashboard
@@ -573,27 +764,11 @@ The application features a complete double-entry bookkeeping system with dual-wr
 
 ### Next Steps
 
-**Current Focus: Phase 4.3 Budget Historical Tracking**
+**Current Focus: Phase 4.5 UI Integration**
 
-The budget system backend implementation is complete and deployed to production. Next immediate steps:
+The pre-aggregation system backend implementation is complete and deployed to production. Next immediate steps:
 
-1. **Budget Historical Tracking** (Phase 4.3):
-   - Implement automated background job capturing budget execution at period boundaries
-   - Populate budget_lines table with historical execution snapshots
-   - Create historical query endpoints showing budget performance over time
-   - Enable time-series data for trend analysis and pattern recognition
-   - Support all six budget frequencies with graceful handling of budget modifications
-   - Add cron job for daily period rollover processing
-   - Implement backfill utilities for missing historical data
-
-2. **Pre-Aggregation System** (Phase 4.4):
-   - Design and implement `monthly_rollups` table for performance optimization
-   - Create background cron job for rollup reconciliation and correction
-   - Implement best-effort synchronous rollup updates on transaction mutations
-   - Build query functions for Home dashboard using pre-aggregated data
-   - Add rollup metrics and monitoring
-
-3. **UI Integration** (Phase 4.5):
+1. **UI Integration** (Phase 4.5):
    - **Budget Management UI**:
      - Budget creation form with scope type selector
      - Budget list view with current execution status
@@ -622,11 +797,41 @@ The budget system backend implementation is complete and deployed to production.
 - **Phase 8**: Multi-currency support enhancements and FX handling
 - **Future**: Advanced features (savings goals, investment tracking, debt prioritization, financial insights)
 
+## Development Process & Quality Assurance
+
+### Enhanced Audit Process
+The project has implemented a comprehensive audit-driven development process that ensures quality consistency and prevents production failures:
+
+**Audit Framework:**
+- **Comprehensive Quality Assessment**: Functional requirements audit, non-functional requirements compliance, and strategic process evaluation
+- **Quality Gate Standardization**: Consistent P0/P1/P2/P3 prioritization with clear escalation criteria
+- **Testing Discipline**: Mandatory unit test coverage >85%, integration tests, and performance benchmarks
+- **Platform Expertise Integration**: Convex constraint awareness and platform-specific research requirements
+- **Scope Management Discipline**: Systematic phase splitting to prevent complexity explosion
+
+**Process Maturity:**
+- **Pre-Implementation Checklist**: Schema verification, platform constraints research, function reference discipline
+- **Testing Standards**: Comprehensive test coverage requirements with regression prevention
+- **Documentation Quality**: Comprehensive JSDoc and implementation documentation standards
+- **Error Handling**: Structured error logging with monitoring integration support
+
+### Workflow Improvements
+Based on comprehensive audit analysis across Phase 4 development journey:
+
+**Key Process Enhancements:**
+- **Scope Management**: Default to phase splitting unless tight technical coupling exists
+- **Platform Expertise**: Dedicated Convex constraint research before implementation
+- **Quality Gates**: Standardized prioritization and escalation procedures
+- **Testing Discipline**: Consistent coverage requirements across all phases
+- **Process Improvement**: Audit-driven learning and continuous workflow enhancement
+
 **Reference Documentation:**
 - `planning/accounting.md`: Complete accounting system roadmap
 - `planning/accountingSteps/Phase4.1-TransferImplementation.md`: Transfer system specifications
 - `planning/accountingSteps/Phase4.2-BudgetSystem.md`: Budget system specifications
 - `planning/accountingSteps/Phase4.3-BudgetHistoricalTracking.md`: Budget historical tracking specifications
+- `planning/accountingSteps/Phase4.4-PreAggregationSystem.md`: Pre-aggregation system specifications
+- `planning/accountingSteps/audits/`: Comprehensive audit reports and process improvements
 - `PRODUCTION-DEPLOYMENT-PHASE-4.2.md`: Phase 4.2 production deployment report
 - `docs/PHASE-4.2-TEST-REPORT.md`: Budget system test results
 - `docs/`: Implementation documentation and test reports
