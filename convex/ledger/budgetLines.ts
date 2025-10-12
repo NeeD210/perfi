@@ -1,55 +1,63 @@
 /**
- * Budget Lines Module
+ * Budget Lines & Historical Tracking
  * 
- * This module handles budget line creation and period rollover processing.
- * Budget lines are historical records capturing budget execution at period boundaries.
+ * This module provides functionality for creating historical budget execution records
+ * and processing budget period rollovers via cron job.
  * 
- * Key functions:
- * - createBudgetLine: Internal mutation to create historical execution snapshot
- * - processBudgetRollover: Internal action (cron job) to process period rollovers for all budgets
- * 
- * Cron job runs daily at 00:05 UTC to capture execution at period boundaries.
+ * Key features:
+ * - createBudgetLine: Internal mutation to create historical execution snapshots
+ * - processBudgetRollover: Cron job handler for automated period rollover processing
+ * - Idempotent operations to prevent duplicate budget_lines records
+ * - Multi-period catchup for missed cron runs
+ * - Graceful handling of soft-deleted budgets
  */
 
 import { internalMutation, internalAction } from "../_generated/server";
-import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { Id } from "../_generated/dataModel";
-import { calculatePeriodBoundaries, calculateNextDueDate } from "./budgetUtils";
+import { internal } from "../_generated/api";
 import { budgetStatusValidator } from "./validators";
+import { calculatePeriodBoundaries, calculateNextDueDate, Frequency } from "./budgetUtils";
 
 // ============================================================================
 // CREATE BUDGET LINE INTERNAL MUTATION
 // ============================================================================
 
 /**
- * Create a historical budget execution snapshot (budget_lines record).
+ * Create a historical budget execution snapshot (internal function, not exposed to clients).
  * 
- * This function is idempotent - calling it multiple times with the same
- * budgetId + periodStart combination will not create duplicate records.
+ * This function is used by:
+ * - Budget rollover cron job to capture execution at period boundaries
+ * - Backfill utility to create missing historical lines
  * 
- * @param budgetId - Budget reference
- * @param periodStart - Period start epoch ms
- * @param periodEnd - Period end epoch ms
- * @param spentAmount - Amount spent in period (minor units)
- * @param remainingAmount - Budget amount minus spent (can be negative)
- * @param percentUsed - Percent of budget used (0-999)
+ * Features:
+ * - Idempotent: checks for existing budget_lines record before creating
+ * - Validates period boundaries and budget existence
+ * - Stores budget amount as snapshot for historical accuracy
+ * - Comprehensive error handling and logging
+ * 
+ * @param budgetId - Budget to create line for
+ * @param periodStart - Start of period (epoch ms, inclusive)
+ * @param periodEnd - End of period (epoch ms, inclusive)
+ * @param spentAmount - Amount spent/earned in period (minor units)
+ * @param remainingAmount - budgetAmount - spentAmount (can be negative)
+ * @param percentUsed - (spentAmount / budgetAmount) * 100, capped at 999
  * @param budgetAmount - Budget amount at time of period end (snapshot)
- * @param status - Budget status (under_budget, at_budget, over_budget)
- * @returns Budget line ID and status (success or already_exists)
- * @internal This is an internal mutation called by cron job and backfill utilities
+ * @param status - Budget status for the period
+ * @returns Budget line ID and creation status
+ * @internal This is an internal function used by cron job and utilities
  */
 export const createBudgetLine = internalMutation({
   args: {
     budgetId: v.id("budgets"),
-    periodStart: v.number(),
-    periodEnd: v.number(),
-    spentAmount: v.number(),
-    remainingAmount: v.number(),
-    percentUsed: v.number(),
-    budgetAmount: v.number(),
-    status: budgetStatusValidator,
+    periodStart: v.number(), // Epoch ms
+    periodEnd: v.number(), // Epoch ms
+    spentAmount: v.number(), // Amount in minor units
+    remainingAmount: v.number(), // Can be negative
+    percentUsed: v.number(), // 0-999
+    budgetAmount: v.number(), // Budget amount at time of period end (snapshot)
+    status: budgetStatusValidator, // Extracted validator for reuse
   },
   returns: v.object({
     budgetLineId: v.id("budget_lines"),
@@ -64,21 +72,21 @@ export const createBudgetLine = internalMutation({
         message: "Budget does not exist",
       });
     }
-
+    
     // 2. Check for existing budget_line (idempotency)
     const existingLine = await ctx.db
       .query("budget_lines")
-      .withIndex("by_budgetId_periodStart", (q) =>
+      .withIndex("by_budgetId_periodStart", q =>
         q.eq("budgetId", args.budgetId).eq("periodStart", args.periodStart)
       )
       .first();
-
+    
     if (existingLine) {
       // Line already exists, return existing ID
       console.log(`Budget line already exists for budget ${args.budgetId} period ${args.periodStart}`);
-      return { budgetLineId: existingLine._id, status: "already_exists" as const };
+      return { budgetLineId: existingLine._id, status: "already_exists" };
     }
-
+    
     // 3. Validate period boundaries
     if (args.periodStart >= args.periodEnd) {
       throw new ConvexError({
@@ -92,7 +100,7 @@ export const createBudgetLine = internalMutation({
         message: "Cannot create budget line for future period",
       });
     }
-
+    
     // 4. Insert budget_lines record
     const budgetLineId = await ctx.db.insert("budget_lines", {
       budgetId: args.budgetId,
@@ -105,57 +113,68 @@ export const createBudgetLine = internalMutation({
       status: args.status,
       createdAt: Date.now(),
     });
-
+    
     console.log(`Created budget line ${budgetLineId} for budget ${args.budgetId}: ${args.status}, ${args.percentUsed}% used`);
-
-    return { budgetLineId, status: "success" as const };
+    
+    const result: { budgetLineId: Id<"budget_lines">; status: "success" | "already_exists" } = { budgetLineId, status: "success" };
+    return result;
   },
 });
 
 // ============================================================================
-// PROCESS BUDGET ROLLOVER INTERNAL ACTION (CRON JOB)
+// PROCESS BUDGET ROLLOVER INTERNAL ACTION (CRON JOB HANDLER)
 // ============================================================================
 
 /**
- * Process period rollovers for all active budgets (cron job handler).
+ * Scheduled background job that processes period rollovers for all active budgets.
  * 
- * Scheduled to run daily at 00:05 UTC. For each budget with nextDueDate <= currentTime:
- * 1. Calculate execution for previous period
- * 2. Create budget_lines record
- * 3. Update nextDueDate to next period start
+ * This cron job runs daily at 00:05 UTC and:
+ * - Queries all active budgets (including soft-deleted for final period handling)
+ * - Processes budgets in batches of 50 to prevent timeout
+ * - Creates budget_lines records for periods that have ended
+ * - Updates nextDueDate to next period start
+ * - Handles multi-period catchup if cron job missed runs
+ * - Gracefully handles soft-deleted budgets (creates final period then stops)
  * 
- * Handles multi-period catchup if cron job fails for multiple days (up to 100 periods).
- * Processes budgets in batches of 50 for performance and memory efficiency.
+ * Performance considerations:
+ * - Batch processing (50 budgets per batch) prevents timeout
+ * - Parallel processing within batches using Promise.allSettled
+ * - Idempotency prevents duplicate budget_lines creation
+ * - Safety limit of 100 periods per budget per run prevents runaway loops
  * 
- * @returns null (logs results to console)
- * @internal This is the cron job handler
+ * @internal This is an internal action triggered by cron job
  */
 export const processBudgetRollover = internalAction({
   args: {},
-  returns: v.null(),
+  returns: v.object({
+    processed: v.number(),
+    created: v.number(),
+    errors: v.number(),
+    duration: v.number(),
+  }),
   handler: async (ctx) => {
     const startTime = Date.now();
     let processed = 0;
     let created = 0;
     let errors = 0;
-
+    
     console.log(`[Budget Rollover] Job started at ${new Date(startTime).toISOString()}`);
-
+    
     try {
-      // 1. Query all budgets (filter will be applied in processing logic)
+      // 1. Query all budgets (not filtered by softdelete to support soft-delete logic)
       const budgets = await ctx.runQuery(internal.ledger.budgets.listActiveBudgets);
-      console.log(`[Budget Rollover] Found ${budgets.length} total budgets`);
-
+      console.log(`[Budget Rollover] Found ${budgets.length} budgets`);
+      
       // 2. Process budgets in batches of 50 to prevent timeout
       const BATCH_SIZE = 50;
       for (let i = 0; i < budgets.length; i += BATCH_SIZE) {
         const batch = budgets.slice(i, i + BATCH_SIZE);
-
+        
         // Process batch in parallel
         const results = await Promise.allSettled(
-          batch.map((budget) => processSingleBudget(ctx, budget))
+          batch.map((budget: any) => processSingleBudget(ctx, budget))
         );
-
+        
         // Count results
         for (const result of results) {
           processed++;
@@ -167,34 +186,33 @@ export const processBudgetRollover = internalAction({
           }
         }
       }
-
+      
       const duration = Date.now() - startTime;
       console.log(`[Budget Rollover] Job completed: ${processed} processed, ${created} lines created, ${errors} errors, ${duration}ms`);
+      
+      return { processed, created, errors, duration };
     } catch (error) {
       console.error(`[Budget Rollover] Job failed: ${error}`);
       // Don't throw - allow job to complete even if partially failed
+      const duration = Date.now() - startTime;
+      return { processed, created, errors, duration };
     }
-
-    return null;
   },
 });
 
-// ============================================================================
-// HELPER FUNCTION: PROCESS SINGLE BUDGET
-// ============================================================================
-
 /**
- * Process period rollover for a single budget.
+ * Process a single budget for period rollover.
  * 
  * Handles:
- * - Multi-period catchup (if cron failed for multiple days)
- * - Soft-deleted budgets (create final period if due, then stop)
- * - Expired budgets (skip)
- * - Missing execution data (skip and retry in next run)
+ * - Multi-period catchup if cron job missed runs
+ * - Soft-deleted budgets (creates final period if due, then stops)
+ * - Expired budgets (skips processing)
+ * - Idempotent budget_lines creation
+ * - Safety limits to prevent runaway loops
  * 
- * @param ctx - Convex context
+ * @param ctx - Convex action context
  * @param budget - Budget to process
- * @returns Object with budgetId, periodsCreated, and reason
+ * @returns Processing result with periods created count
  */
 async function processSingleBudget(
   ctx: any,
@@ -203,14 +221,14 @@ async function processSingleBudget(
     userId: Id<"users">;
     accountId?: Id<"accounts">;
     amount: number;
-    frequency: "daily" | "weekly" | "monthly" | "quarterly" | "semestrally" | "yearly";
+    frequency: Frequency;
     nextDueDate: number;
     endDate?: number;
     creationTime: number;
     softdelete: boolean;
     deletedAt?: number;
     scopeType: "singleAccount" | "multipleAccounts" | "accountType";
-    scopeRefs?: Array<Id<"accounts">>;
+    scopeRefs?: Id<"accounts">[];
     scopeAccountType?: "expense" | "income";
     description?: string;
   }
@@ -218,26 +236,25 @@ async function processSingleBudget(
   const currentTime = Date.now();
   let periodsCreated = 0;
   const MAX_CATCHUP_PERIODS = 100; // Safety limit to prevent runaway loops
-
+  
   // Skip if budget hasn't reached nextDueDate yet
   if (budget.nextDueDate > currentTime) {
     return { budgetId: budget._id, periodsCreated: 0, reason: "not_due" };
   }
-
+  
   // Handle soft-deleted budgets: create final period if current period has ended, then stop
   if (budget.softdelete) {
     console.log(`[Budget Rollover] Budget ${budget._id} is soft-deleted, creating final period if due`);
     if (budget.nextDueDate <= currentTime) {
-      // Create final period
+      // Create final period, then skip
       const previousPeriodEnd = budget.nextDueDate - 1;
       const { periodStart } = calculatePeriodBoundaries(budget.frequency, previousPeriodEnd);
-      
       const execution = await ctx.runQuery(internal.ledger.budgetExecution.calculateExecutionForPeriod, {
         budgetId: budget._id,
         periodStart,
         periodEnd: previousPeriodEnd,
       });
-
+      
       if (execution) {
         await ctx.runMutation(internal.ledger.budgetLines.createBudgetLine, {
           budgetId: budget._id,
@@ -250,26 +267,20 @@ async function processSingleBudget(
           status: execution.status,
         });
         periodsCreated++;
-        
-        // Update nextDueDate to prevent re-processing in future cron runs
-        await ctx.runMutation(internal.ledger.budgets.updateNextDueDate, {
-          budgetId: budget._id,
-          nextDueDate: Date.now() + (100 * 365 * 24 * 60 * 60 * 1000), // 100 years in future
-        });
       }
     }
     return { budgetId: budget._id, periodsCreated, reason: "soft_deleted_final_period" };
   }
-
+  
   // Skip if budget has expired (endDate in past)
   if (budget.endDate && budget.endDate < currentTime) {
     console.log(`[Budget Rollover] Skipping expired budget ${budget._id}`);
     return { budgetId: budget._id, periodsCreated: 0, reason: "expired" };
   }
-
+  
   // Multi-period catchup loop: process all periods from nextDueDate to currentTime
   let workingNextDueDate = budget.nextDueDate;
-
+  
   while (workingNextDueDate <= currentTime && periodsCreated < MAX_CATCHUP_PERIODS) {
     // Calculate previous period boundaries
     const previousPeriodEnd = workingNextDueDate - 1; // 1ms before new period starts
@@ -277,19 +288,19 @@ async function processSingleBudget(
       budget.frequency,
       previousPeriodEnd
     );
-
+    
     // Calculate execution for previous period
     const execution = await ctx.runQuery(internal.ledger.budgetExecution.calculateExecutionForPeriod, {
       budgetId: budget._id,
       periodStart,
       periodEnd: previousPeriodEnd,
     });
-
+    
     if (!execution) {
       console.warn(`[Budget Rollover] Could not calculate execution for budget ${budget._id} period ${periodStart}`);
       break; // Stop processing this budget, will retry in next cron run
     }
-
+    
     // Create budget_lines record (idempotent)
     const result = await ctx.runMutation(internal.ledger.budgetLines.createBudgetLine, {
       budgetId: budget._id,
@@ -301,15 +312,15 @@ async function processSingleBudget(
       budgetAmount: budget.amount, // Snapshot budget amount at period end
       status: execution.status,
     });
-
+    
     if (result.status === "success") {
       periodsCreated++;
     }
-
+    
     // Advance to next period
     workingNextDueDate = calculateNextDueDate(workingNextDueDate, budget.frequency);
   }
-
+  
   // Update budget.nextDueDate to caught-up date
   if (periodsCreated > 0) {
     await ctx.runMutation(internal.ledger.budgets.updateNextDueDate, {
@@ -317,11 +328,10 @@ async function processSingleBudget(
       nextDueDate: workingNextDueDate,
     });
   }
-
+  
   if (periodsCreated >= MAX_CATCHUP_PERIODS) {
     console.warn(`[Budget Rollover] Budget ${budget._id} hit catchup limit (${MAX_CATCHUP_PERIODS} periods). Will continue in next run.`);
   }
-
+  
   return { budgetId: budget._id, periodsCreated, reason: "success" };
 }
-

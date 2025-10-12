@@ -30,55 +30,10 @@ To optimize the agent's actions:
 | **Dependencies** | If the PRD requires a new package, use the dedicated dependency tool (e.g., `<lov-add-dependency>`) immediately after you draft the file that uses it. |
 | **Design System** | If the PRD references specific **design tokens** or component variants, ensure those tokens are defined (in `index.css` or `tailwind.config.ts`) or the variants are customized (in `button.tsx`, etc.) **before** implementing the component itself. |
 
-## 🧪 Mandatory Testing Requirements
-
-**Testing Discipline Standards:**
-- Unit test coverage >85% (MANDATORY)
-- Integration test requirements for all API calls
-- Performance test benchmarks for queries
-- Edge case test coverage for error states
-- Manual validation steps from PRD
-
-**Testing Validation:**
-- [ ] All unit tests pass
-- [ ] Integration tests cover API flows
-- [ ] Performance benchmarks meet targets
-- [ ] Edge cases handled gracefully
-
-## 🔗 Convex Function Reference Standards
-
-**CRITICAL:** Enforce correct function calling patterns:
-```typescript
-// ❌ WRONG (causes runtime error)
-const result = await ctx.runQuery(internal.ledger.budgetHistory.getBudgetHistory, {...});
-
-// ✅ CORRECT
-const result = await ctx.runQuery(api.ledger.budgetHistory.getBudgetHistory, {...});
-```
-
-**Validation Checklist:**
-- [ ] All function calls use correct `api.` vs `internal.` patterns
-- [ ] No function reference errors in implementation
-- [ ] Linting rules catch function reference misuse
-
-## 🚦 Quality Gates
-
-**P0 Blockers:** Must resolve before proceeding
-**P1 High Priority:** Should resolve for production readiness
-**P2 Medium Priority:** Can defer with documentation
-**P3 Low Priority:** Optional improvements
-
-**Escalation Criteria:**
-- P0: Stop implementation, resolve immediately
-- P1: Address before deployment
-- P2/P3: Document and track
-
 ## 📝 Execution Plan Deliverable
 
 Before any code execution, output your proposed plan using the agent's planning format (e.g., `<suggest_plan/>` or numbered steps in a `<lov-thinking>` block). The plan must confirm:
 
 1.  **Phase Identification:** Clearly state the phase from the PRD being implemented.
 2.  **File List:** A comprehensive list of **all files** that will be created or modified.
-3.  **Testing Strategy:** Comprehensive testing plan including unit tests, integration tests, and performance benchmarks.
-4.  **Function Reference Validation:** Plan for validating correct Convex function calling patterns.
-5.  **Validation Strategy:** The specific steps for verifying the implementation (e.g., "Run `npm run test`, manually check responsiveness on mobile, verify API calls using `read-network-requests`").
+3.  **Validation Strategy:** The specific steps for verifying the implementation (e.g., "Run `npm run test`, manually check responsiveness on mobile, verify API calls using `read-network-requests`").

@@ -41,21 +41,6 @@ Your audit must proceed in three systematic steps, generating comprehensive find
     2.  Does the phase directly align with the overarching **product vision/goals** defined in the higher-level plan (`planning\accounting.md`)? If not, why is this work prioritized now?
     3.  Does the plan account for the minimum necessary **analytics or logging** required to measure the feature's success post-launch?
 
-### **Step 4: Scope Management and Phase Splitting Analysis**
-
-* **Goal:** Prevent complexity explosion from combined phases
-* **Questions to Answer:**
-    1. Does this phase combine multiple independent systems? If yes, recommend splitting.
-    2. Can this phase be delivered independently without blocking other features?
-    3. Does combining systems increase complexity by >2x? If yes, split the phase.
-    4. What is the minimum viable delivery that provides user value?
-
-**Phase Splitting Criteria:**
-- Default to splitting unless tight technical coupling exists
-- Value delivery priority over technical elegance
-- Risk isolation between systems
-- Faster user feedback cycles (3-4 weeks earlier)
-
 ## 📝 Final Deliverable: PRD Audit Report
 
 Generate a detailed, critical report in Markdown format using the following structure. Use clear, actionable language for all identified issues. Save the report to `planning\accountingSteps\audits`.
@@ -94,26 +79,3 @@ Generate a detailed, critical report in Markdown format using the following stru
 ## IV. Scope and Alignment Recommendations
 
 [Provide clear suggestions for de-scoping, re-sequencing, or further planning, especially if the scope is too broad.]
-
-## V. Quality Gate Priority Assessment
-
-### A. Priority Level Classification
-
-| Priority | Description | Action Required |
-|:---|:---|:---|
-| **P0** | Blocker - Must fix before deployment | STOP implementation |
-| **P1** | High priority - Should fix for production readiness | Address before proceeding |
-| **P2** | Medium priority - Can defer with documentation | Document and track |
-| **P3** | Low priority - Nice to have | Optional improvement |
-
-### B. Priority Assessment Table
-
-| Issue | Priority | Rationale | Recommended Action |
-|:---|:---|:---|:---|
-| [Issue Description] | [P0/P1/P2/P3] | [Why this priority] | [Specific action required] |
-
-### C. Escalation Criteria
-
-- **P0**: Stop PRD approval, resolve immediately
-- **P1**: Address before proceeding to implementation
-- **P2/P3**: Document and track for future phases

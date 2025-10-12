@@ -38,40 +38,7 @@ Your audit must proceed in three systematic steps, utilizing available debugging
     3.  **Responsiveness Audit:** Manually check the UI at mobile, tablet, and desktop viewports to confirm the responsive implementation specified in the PRD.
 * **Audit Criteria:** List the top 3-5 critical non-functional criteria (e.g., "Function size must be < 50 lines," "All errors must be logged to console," "Must use object format for `useQuery`") that you will specifically check.
 
-### **Step 3: Quality Regression Prevention**
-
-* **Goal:** Prevent quality regression like Phase 4.2→4.3
-* **Methodology:**
-    1. **Testing Coverage Audit**: Verify >85% unit test coverage
-    2. **Function Reference Audit**: Check all Convex function calls
-    3. **Performance Audit**: Validate index usage and query optimization
-    4. **Documentation Quality**: Ensure comprehensive implementation docs
-
-**Regression Prevention Checklist:**
-- [ ] Testing coverage maintained or improved
-- [ ] No function reference errors
-- [ ] Performance targets met
-- [ ] Documentation quality maintained
-- [ ] Code quality standards upheld
-
-### **Step 4: Strategic Process Assessment**
-
-* **Goal:** Evaluate process maturity against Phase 4 lessons learned
-* **Methodology:**
-    1. **Scope Management**: Verify phase splitting discipline maintained
-    2. **Platform Expertise**: Check Convex constraint awareness
-    3. **Quality Gates**: Validate P0/P1/P2/P3 application
-    4. **Testing Discipline**: Confirm testing standards upheld
-    5. **Documentation Quality**: Ensure comprehensive documentation
-
-**Process Maturity Evaluation:**
-- Scope management discipline maintained
-- Platform expertise integrated
-- Quality gates consistently applied
-- Testing discipline upheld
-- Documentation quality maintained
-
-### **Step 5: Bug and Non-Compliance Report Generation**
+### **Step 3: Bug and Non-Compliance Report Generation**
 
 * **Goal:** Compile all findings into a structured report for the development team.
 * **Output Format:** Generate a report using the specific format below. If no issues are found, state "No Issues Found."
@@ -115,39 +82,6 @@ Generate a detailed report in Markdown format using the following structure.
 ### High-Priority Code Quality Violations
 
 [List any violations that require immediate attention (e.g., security, major performance issues). If none, state: "None."]
-
-## IV. Quality Regression Prevention Assessment
-
-### A. Testing Coverage Audit
-| Metric | Target | Actual | Status | Action Required |
-|:---|:---|:---|:---|:---|
-| Unit Test Coverage | >85% | [Actual %] | [PASS/FAIL] | [Action if failed] |
-| Integration Tests | Complete | [Status] | [PASS/FAIL] | [Action if failed] |
-| Performance Tests | Pass | [Status] | [PASS/FAIL] | [Action if failed] |
-
-### B. Function Reference Audit
-| Function Call | Pattern | Status | Action Required |
-|:---|:---|:---|:---|
-| [Function Name] | [api./internal.] | [CORRECT/INCORRECT] | [Action if incorrect] |
-
-### C. Performance Audit
-| Query/Operation | Index Usage | Performance | Status | Action Required |
-|:---|:---|:---|:---|:---|
-| [Query Name] | [Index Used] | [Actual Time] | [PASS/FAIL] | [Action if failed] |
-
-## V. Strategic Process Assessment
-
-### A. Process Maturity Evaluation
-| Process Area | Requirement | Status | Evidence | Recommendation |
-|:---|:---|:---|:---|:---|
-| Scope Management | Phase splitting discipline | [MAINTAINED/REGRESSED] | [Evidence] | [Recommendation] |
-| Platform Expertise | Convex constraint awareness | [INTEGRATED/MISSING] | [Evidence] | [Recommendation] |
-| Quality Gates | P0/P1/P2/P3 application | [CONSISTENT/INCONSISTENT] | [Evidence] | [Recommendation] |
-| Testing Discipline | Standards upheld | [MAINTAINED/REGRESSED] | [Evidence] | [Recommendation] |
-| Documentation | Quality maintained | [COMPREHENSIVE/INSUFFICIENT] | [Evidence] | [Recommendation] |
-
-### B. Process Improvement Recommendations
-[Based on audit findings, recommend specific process improvements]
 
 ### Final Output
 The complete report will be a file (PhaseN Audit.md) in planning\accountingSteps\audits with all the findings. The answer to the user must be the executive summary of this report.

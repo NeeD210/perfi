@@ -29,56 +29,6 @@ You MUST strictly use the following two documents as your primary source of cont
 Use the provided information about the current codebase status to inform the **Technical Considerations** and **Open Questions/Dependencies** sections of the PRD, noting any existing components or potential integration risks relevant to the *next* phase.
 
 
-## 🔍 Pre-Implementation Validation Checklist
-
-Before finalizing the PRD, verify:
-- [ ] **Schema Verification**: Confirm table is empty in production (CRITICAL)
-- [ ] **Platform Constraints**: Research Convex limits for performance targets
-- [ ] **Function Reference Discipline**: All function calls use correct `api.` vs `internal.` patterns
-- [ ] **Index-First Design**: All queries designed with proper indexes
-- [ ] **Testing Strategy**: Comprehensive test coverage plan (>85% unit tests)
-- [ ] **Scope Validation**: Phase can be delivered independently without blocking other systems
-
-## 🏗️ Platform Constraint Research
-
-MANDATORY: Research and document Convex platform limitations:
-- Background job timeout behavior
-- Query performance limits
-- Schema migration constraints
-- Rate limiting considerations
-
-## 🧪 Testing Discipline Requirements
-
-**Mandatory Testing Standards:**
-- Unit test coverage >85% (MANDATORY)
-- Integration test requirements for all API calls
-- Performance test benchmarks for queries
-- Edge case test coverage for error states
-- Manual validation steps from PRD
-
-## 🔗 Convex Function Reference Standards
-
-**CRITICAL:** Enforce correct function calling patterns:
-```typescript
-// ❌ WRONG (causes runtime error)
-const result = await ctx.runQuery(internal.ledger.budgetHistory.getBudgetHistory, {...});
-
-// ✅ CORRECT
-const result = await ctx.runQuery(api.ledger.budgetHistory.getBudgetHistory, {...});
-```
-
-## 🚦 Quality Gates
-
-**P0 Blockers:** Must resolve before proceeding
-**P1 High Priority:** Should resolve for production readiness
-**P2 Medium Priority:** Can defer with documentation
-**P3 Low Priority:** Optional improvements
-
-**Escalation Criteria:**
-- P0: Stop PRD creation, resolve immediately
-- P1: Address before next phase
-- P2/P3: Document and track
-
 ## 🚀 Final Deliverable
 
 Generate only the **complete Markdown content** for the new PRD file.
