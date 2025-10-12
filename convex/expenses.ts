@@ -188,6 +188,17 @@ export const addExpense = mutation({
                 isIncome,
               });
             }
+
+            // Update rollups (best-effort, failures don't block transaction)
+            try {
+              await ctx.runMutation(internal.ledger.rollups.updateRollupsOnTransaction, {
+                journalEntryId: entryId,
+                updateType: "create",
+              });
+            } catch (rollupError) {
+              console.error(`[Rollup Update] Failed to update rollups for expense ${expenseId}: ${rollupError}`);
+              // Don't throw - rollup updates are best-effort
+            }
         }
       } catch (err) {
         logDualWriteError({
@@ -902,6 +913,17 @@ export const deleteExpense = mutation({
             updateTime: Date.now(),
             updatedBy: userId as Id<"users">,
           });
+
+          // Update rollups (best-effort, failures don't block transaction)
+          try {
+            await ctx.runMutation(internal.ledger.rollups.updateRollupsOnTransaction, {
+              journalEntryId: e._id,
+              updateType: "delete",
+            });
+          } catch (rollupError) {
+            console.error(`[Rollup Update] Failed to update rollups for expense delete ${args.id}: ${rollupError}`);
+            // Don't throw - rollup updates are best-effort
+          }
         }
       } catch (err) {
         logDualWriteError({
@@ -1052,6 +1074,17 @@ export const updateExpense = mutation({
                 amountARS,
                 date: updates.date ?? expense.date,
               });
+
+              // Update rollups (best-effort, failures don't block transaction)
+              try {
+                await ctx.runMutation(internal.ledger.rollups.updateRollupsOnTransaction, {
+                  journalEntryId: existingEntry._id,
+                  updateType: "update",
+                });
+              } catch (rollupError) {
+                console.error(`[Rollup Update] Failed to update rollups for expense update ${args.id}: ${rollupError}`);
+                // Don't throw - rollup updates are best-effort
+              }
             }
           }
         }

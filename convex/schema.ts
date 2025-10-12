@@ -327,4 +327,23 @@ export default defineSchema({
   })
     .index("by_user_legacyRecurring", ["userId", "legacyRecurringId"]) 
     .index("by_recurringEntryId", ["recurringEntryId"]),
+
+  // Pre-aggregation system for performance optimization
+  monthly_rollups: defineTable({
+    userId: v.id("users"), // User partition for multi-tenancy
+    accountId: v.id("accounts"), // Account reference
+    month: v.number(), // Epoch ms of month start (1st day 00:00:00 UTC)
+    totalDebits: v.number(), // Sum of debit lines in month (minor units)
+    totalCredits: v.number(), // Sum of credit lines in month (minor units)
+    netAmount: v.number(), // totalCredits - totalDebits (can be negative)
+    transactionCount: v.number(), // Number of journal_lines in month
+    lastUpdated: v.number(), // Epoch ms when rollup was last updated
+    lastReconciled: v.number(), // Epoch ms when rollup was last reconciled
+    createdAt: v.number(), // Epoch ms when rollup record was created
+  })
+    .index("by_user_month", ["userId", "month"]) // Home dashboard monthly summaries
+    .index("by_account_month", ["accountId", "month"]) // Account-specific historical queries
+    .index("by_user_account_month", ["userId", "accountId", "month"]) // Budget execution queries
+    .index("by_month", ["month"]) // System-wide reconciliation jobs
+    .index("by_last_reconciled", ["lastReconciled"]), // Find stale rollups for reconciliation
 });

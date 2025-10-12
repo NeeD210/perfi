@@ -1,333 +1,50 @@
-# 🔄 Planning Execution Workflow Reflector
+## 🎯 Role and Objective
 
-**Reflection Date:** October 12, 2025  
-**Based on:** Comprehensive Audit Reflection Analysis  
-**Scope:** Workflow improvements based on Phase 4 audit patterns and lessons learned
+You are the **Architectural Reflector**, the core "Learning Agent" for the codebase. Your objective is to perform a rigorous, systematic analysis of recent code changes, bug fixes, and non-compliance reports to **codify generalized architectural standards, constraints, and best practices** for future phases.
 
----
+You must abstract high-level rules from low-level implementation details and update the central source of truth for all codebase guidelines.
 
-## I. Executive Summary
+## 📄 Core Audit Specification Documents
 
-Based on the comprehensive audit reflection analysis of Phase 4 development journey, this reflector identifies critical workflow improvements needed in the planning execution process. The analysis reveals that while the audit process is highly effective, the planning execution workflow needs significant enhancements to prevent quality regression and improve consistency.
+You MUST strictly adhere to the following file for documentation:
 
-**Key Workflow Issues Identified:**
-- ❌ **Scope Management**: No systematic approach to prevent scope creep
-- ❌ **Testing Discipline**: Inconsistent testing requirements across phases
-- ❌ **Platform Expertise**: Missing Convex constraint awareness
-- ❌ **Quality Gates**: No standardized pre-implementation checklist
-- ❌ **Process Consistency**: Regression from Phase 4.2 (production-ready) to Phase 4.3 (critical bugs)
+1.  **Target File:** `planning/summary.md`
+    * **Purpose:** This is the single source of truth for all **Core Codebase Guidelines & Non-Functional Requirements (NFRs)**. You must ensure its content is always updated, accurate, and reflects the current, learned best practices.
 
----
+## ⚙️ Execution Workflow and Learning Sources
 
-## II. Critical Workflow Changes Required
+Your process involves abstracting design patterns and failures into permanent rules:
 
-### 2.1 Enhanced PRD Creation Process (Step 1)
+### **Step 1: Analyze Learning Sources**
 
-**Current State:** Basic PRD creation without systematic validation
-**Required Changes:**
+* **Audit Reports (from `auditExecution`):** Analyze all **Non-Functional Violations** (Section III) to understand what was flagged (e.g., function size, non-semantic tokens, missing error handling).
+* **Fix Patches (from `testDev`):** Review all **`patches_log`** and corresponding code changes to identify:
+    * Specific technical patterns used to resolve runtime errors.
+    * Successful dependency configuration or API integration patterns.
+    * Successful refactoring choices (e.g., component splitting, state management).
 
-#### **A. Mandatory Pre-Implementation Checklist Integration**
-Add to `1 - createPRD.md`:
-```markdown
-## 🔍 Pre-Implementation Validation Checklist
+### **Step 2: Abstract and Generalize**
 
-Before finalizing the PRD, verify:
-- [ ] **Schema Verification**: Confirm table is empty in production (CRITICAL)
-- [ ] **Platform Constraints**: Research Convex limits for performance targets
-- [ ] **Function Reference Discipline**: All function calls use correct `api.` vs `internal.` patterns
-- [ ] **Index-First Design**: All queries designed with proper indexes
-- [ ] **Testing Strategy**: Comprehensive test coverage plan (>85% unit tests)
-- [ ] **Scope Validation**: Phase can be delivered independently without blocking other systems
-```
+For every finding, follow the Abstraction Filter:
 
-#### **B. Platform Expertise Integration**
-Add platform constraint research requirements:
-```markdown
-## 🏗️ Platform Constraint Research
+1.  **Filter Out:** Discard one-time fixes, temporary variables, specific API endpoints, or implementation-specific file paths (e.g., "The bug in `utils.ts`").
+2.  **Filter In:** Focus on identifying the **underlying principle, pattern, or constraint** (e.g., "All components integrating X API must cache responses," "Database access logic must be isolated in dedicated hooks").
 
-MANDATORY: Research and document Convex platform limitations:
-- Background job timeout behavior
-- Query performance limits
-- Schema migration constraints
-- Rate limiting considerations
-```
+### **Step 3: Synthesize and Document**
 
-### 2.2 Enhanced PRD Audit Process (Step 2)
+1.  **Rule Formulation:** Translate the abstracted principle into a clear, prescriptive, and declarative guideline suitable for a new or existing section in `planning/summary.md`.
+    * **Example Transformation:** A patch fixing a `useQuery` error that lacked an object format becomes: *"Data Fetching Standard: When using Tanstack's `useQuery` hook, **always** use the object format for query configuration."*
+2.  **Content Generation:** Generate the **complete, revised content** for `planning/summary.md`, seamlessly integrating all new standards while maintaining the existing structure and authoritative prose.
 
-**Current State:** Basic feasibility check
-**Required Changes:**
+## 📝 Final Deliverable: Codebase Guidelines Update
 
-#### **A. Scope Management Discipline**
-Add to `2 - auditPRD.md`:
-```markdown
-### **Step 4: Scope Management and Phase Splitting Analysis**
-
-* **Goal:** Prevent complexity explosion from combined phases
-* **Questions to Answer:**
-    1. Does this phase combine multiple independent systems? If yes, recommend splitting.
-    2. Can this phase be delivered independently without blocking other features?
-    3. Does combining systems increase complexity by >2x? If yes, split the phase.
-    4. What is the minimum viable delivery that provides user value?
-
-**Phase Splitting Criteria:**
-- Default to splitting unless tight technical coupling exists
-- Value delivery priority over technical elegance
-- Risk isolation between systems
-- Faster user feedback cycles (3-4 weeks earlier)
-```
-
-#### **B. Quality Gate Standardization**
-Add standardized priority levels:
-```markdown
-## 📊 Quality Gate Priority Levels
-
-| Priority | Description | Action Required |
-|:---|:---|:---|
-| **P0** | Blocker - Must fix before deployment | STOP implementation |
-| **P1** | High priority - Should fix for production readiness | Address before proceeding |
-| **P2** | Medium priority - Can defer with documentation | Document and track |
-| **P3** | Low priority - Nice to have | Optional improvement |
-```
-
-### 2.3 Enhanced Execution Process (Step 3)
-
-**Current State:** Basic implementation without quality gates
-**Required Changes:**
-
-#### **A. Mandatory Testing Discipline**
-Add to `3 - ExecutePRD.md`:
-```markdown
-## 🧪 Mandatory Testing Requirements
-
-**Testing Discipline Standards:**
-- Unit test coverage >85% (MANDATORY)
-- Integration test requirements for all API calls
-- Performance test benchmarks for queries
-- Edge case test coverage for error states
-- Manual validation steps from PRD
-
-**Testing Validation:**
-- [ ] All unit tests pass
-- [ ] Integration tests cover API flows
-- [ ] Performance benchmarks meet targets
-- [ ] Edge cases handled gracefully
-```
-
-#### **B. Function Reference Discipline**
-Add Convex-specific requirements:
-```markdown
-## 🔗 Convex Function Reference Standards
-
-**CRITICAL:** Enforce correct function calling patterns:
-```typescript
-// ❌ WRONG (causes runtime error)
-const result = await ctx.runQuery(internal.ledger.budgetHistory.getBudgetHistory, {...});
-
-// ✅ CORRECT
-const result = await ctx.runQuery(api.ledger.budgetHistory.getBudgetHistory, {...});
-```
-
-**Validation Checklist:**
-- [ ] All function calls use correct `api.` vs `internal.` patterns
-- [ ] No function reference errors in implementation
-- [ ] Linting rules catch function reference misuse
-```
-
-### 2.4 Enhanced Execution Audit Process (Step 4)
-
-**Current State:** Basic compliance check
-**Required Changes:**
-
-#### **A. Comprehensive Quality Assessment**
-Add to `4 - auditExecution.md`:
-```markdown
-### **Step 4: Quality Regression Prevention**
-
-* **Goal:** Prevent quality regression like Phase 4.2→4.3
-* **Methodology:**
-    1. **Testing Coverage Audit**: Verify >85% unit test coverage
-    2. **Function Reference Audit**: Check all Convex function calls
-    3. **Performance Audit**: Validate index usage and query optimization
-    4. **Documentation Quality**: Ensure comprehensive implementation docs
-
-**Regression Prevention Checklist:**
-- [ ] Testing coverage maintained or improved
-- [ ] No function reference errors
-- [ ] Performance targets met
-- [ ] Documentation quality maintained
-- [ ] Code quality standards upheld
-```
-
-#### **B. Strategic Process Assessment**
-Add process maturity evaluation:
-```markdown
-## 📈 Process Maturity Assessment
-
-**Evaluate against Phase 4 lessons learned:**
-- Scope management discipline maintained
-- Platform expertise integrated
-- Quality gates consistently applied
-- Testing discipline upheld
-- Documentation quality maintained
-
-**Process Improvement Recommendations:**
-[Based on audit findings, recommend specific process improvements]
-```
+Generate the complete, final Markdown content for `planning/summary.md`. Your output must be the authoritative source of project standards.
 
 ---
 
-## III. New Workflow Steps Required
+## II. Incident Commander Prompt
 
-### 3.1 Pre-Implementation Platform Research (New Step 0)
+This agent is the crucial "triage" and "re-entry" point for the entire workflow. It ensures that when the system fails to produce working code, the failure is systematically analyzed, logged, and converted into a new, smaller task to re-engage the development loop.
 
-**Purpose:** Address Convex constraint gaps identified in audits
-**Integration:** Before PRD creation
-
-```markdown
-## 🏗️ Platform Constraint Research (Step 0)
-
-**Role:** Platform Research Specialist
-**Objective:** Research Convex platform limitations before PRD creation
-
-**Research Requirements:**
-- Background job timeout behavior
-- Query performance limits and optimization patterns
-- Schema migration constraints and best practices
-- Rate limiting and scalability considerations
-- Platform-specific error handling patterns
-
-**Deliverable:** Platform constraint documentation for PRD integration
-```
-
-### 3.2 Post-Audit Process Improvement (New Step 5)
-
-**Purpose:** Implement audit-driven learning
-**Integration:** After execution audit
-
-```markdown
-## 📚 Process Improvement Implementation (Step 5)
-
-**Role:** Process Improvement Specialist
-**Objective:** Implement lessons learned from audit findings
-
-**Implementation Areas:**
-- Update workflow templates based on audit insights
-- Document best practices and anti-patterns
-- Create platform expertise integration process
-- Establish quality gate standardization
-- Implement scope management discipline
-
-**Deliverable:** Updated workflow templates and process documentation
-```
-
----
-
-## IV. Workflow Template Updates
-
-### 4.1 Updated Workflow Sequence
-
-**Current Sequence:**
-1. Create PRD
-2. Audit PRD
-3. Execute PRD
-4. Audit Execution
-
-**Enhanced Sequence:**
-0. **Platform Research** (New)
-1. **Create PRD** (Enhanced with checklist)
-2. **Audit PRD** (Enhanced with scope management)
-3. **Execute PRD** (Enhanced with testing discipline)
-4. **Audit Execution** (Enhanced with regression prevention)
-5. **Process Improvement** (New)
-
-### 4.2 Quality Gate Integration
-
-**Add to all workflow steps:**
-```markdown
-## 🚦 Quality Gates
-
-**P0 Blockers:** Must resolve before proceeding
-**P1 High Priority:** Should resolve for production readiness
-**P2 Medium Priority:** Can defer with documentation
-**P3 Low Priority:** Optional improvements
-
-**Escalation Criteria:**
-- P0: Stop workflow, resolve immediately
-- P1: Address before next phase
-- P2/P3: Document and track
-```
-
----
-
-## V. Implementation Priority
-
-### 5.1 Immediate Changes (High Priority)
-
-1. **Add Pre-Implementation Checklist** to Step 1
-2. **Enhance Scope Management** in Step 2
-3. **Enforce Testing Discipline** in Step 3
-4. **Add Regression Prevention** to Step 4
-
-### 5.2 Medium-Term Changes
-
-1. **Implement Platform Research** Step 0
-2. **Add Process Improvement** Step 5
-3. **Standardize Quality Gates** across all steps
-4. **Create Platform Expertise Integration**
-
-### 5.3 Long-Term Changes
-
-1. **Establish Process Maturity Framework**
-2. **Implement Audit-Driven Learning System**
-3. **Create Comprehensive Risk Management**
-4. **Develop Platform Constraint Documentation**
-
----
-
-## VI. Success Metrics
-
-### 6.1 Quality Consistency Metrics
-
-- **Testing Coverage:** Maintain >85% across all phases
-- **Function Reference Errors:** Zero runtime errors
-- **Performance Targets:** Meet all NFR requirements
-- **Documentation Quality:** Comprehensive and up-to-date
-
-### 6.2 Process Maturity Metrics
-
-- **Scope Management:** No combined phases without justification
-- **Platform Expertise:** All constraints researched before implementation
-- **Quality Gates:** Consistent P0/P1/P2/P3 application
-- **Regression Prevention:** No quality regression between phases
-
-### 6.3 Strategic Value Metrics
-
-- **User Value Delivery:** Faster feature delivery (3-4 weeks earlier)
-- **Risk Mitigation:** Proactive identification of implementation risks
-- **Organizational Learning:** Cross-phase insights and best practices
-- **Process Improvement:** Continuous workflow enhancement
-
----
-
-## VII. Conclusion
-
-The comprehensive audit reflection reveals that while the audit process is highly effective, the planning execution workflow needs significant enhancements to prevent quality regression and improve consistency. The key changes focus on:
-
-1. **Scope Management Discipline**: Prevent complexity explosion
-2. **Testing Discipline**: Maintain consistent quality standards
-3. **Platform Expertise**: Integrate Convex constraint awareness
-4. **Quality Gates**: Standardize prioritization and escalation
-5. **Process Improvement**: Implement audit-driven learning
-
-**Implementation of these changes will:**
-- Prevent quality regression like Phase 4.2→4.3
-- Maintain production readiness standards
-- Enable faster user value delivery
-- Establish consistent process maturity
-- Drive continuous organizational learning
-
----
-
-**Reflection Completed:** October 12, 2025  
-**Status:** ✅ Workflow Enhancement Plan Complete  
-**Next Steps:** Implement immediate priority changes to workflow templates
+**Input Flow:** Receives structured failure reports from `testDev` or `testDeploy`.
+**Output Flow:** Generates a new, focused `HOTFIX_PRD.md` to re-enter the loop at `executePRD`.

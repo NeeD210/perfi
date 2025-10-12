@@ -351,6 +351,44 @@ export const reopenAccount = internalMutation({
   },
 });
 
+// ============================================================================
+// INTERNAL QUERIES FOR ROLLUP SYSTEM
+// ============================================================================
+
+/**
+ * List all active accounts for rollup reconciliation
+ * 
+ * This internal query is used by the rollup reconciliation job to process
+ * all active accounts in batches. It excludes soft-deleted accounts and
+ * returns only the essential fields needed for reconciliation.
+ * 
+ * @returns Array of active accounts with essential fields
+ */
+export const listActiveAccounts = internalQuery({
+  args: {},
+  returns: v.array(v.object({
+    _id: v.id("accounts"),
+    userId: v.id("users"),
+    description: v.string(),
+    accountType: v.string(),
+    softdelete: v.boolean(),
+  })),
+  handler: async (ctx) => {
+    const accounts = await ctx.db
+      .query("accounts")
+      .filter(q => q.eq(q.field("softdelete"), false))
+      .collect();
+    
+    return accounts.map(account => ({
+      _id: account._id,
+      userId: account.userId,
+      description: account.description,
+      accountType: account.accountType,
+      softdelete: account.softdelete,
+    }));
+  },
+});
+
 // Public queries for account management
 export const getAccountHierarchy = query({
   args: {

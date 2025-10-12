@@ -60,4 +60,9 @@ export * from "./budgetExecution";
 export * from "./budgetHistory";
 export * from "./budgetLines";
 export { generatePeriodBoundariesInRange } from "./budgetUtils";
+
+// Export rollup functions
+export * from "./rollups";
+export * from "./monthlySummary";
+
 export * from "./validators";

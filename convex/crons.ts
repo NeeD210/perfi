@@ -10,4 +10,8 @@ crons.cron("processRecurringTransactions", "0 0 * * *", internal.internal.recurr
 // Captures budget execution at period boundaries and creates historical budget_lines records
 crons.cron("budgetRollover", "5 0 * * *", internal.ledger.budgetLines.processBudgetRollover);
 
+// Run rollup reconciliation every day at 02:00 UTC (after transaction processing peak)
+// Ensures monthly rollups are consistent with journal_lines data through drift detection
+crons.cron("rollupReconciliation", "0 2 * * *", internal.ledger.rollups.reconcileMonthlyRollups);
+
 export default crons; 

@@ -38,8 +38,10 @@ import type * as ledger_fetchHistoricalRates from "../ledger/fetchHistoricalRate
 import type * as ledger_fetchLiveRates from "../ledger/fetchLiveRates.js";
 import type * as ledger_fx from "../ledger/fx.js";
 import type * as ledger_index from "../ledger/index.js";
+import type * as ledger_monthlySummary from "../ledger/monthlySummary.js";
 import type * as ledger_rateMonitoring from "../ledger/rateMonitoring.js";
 import type * as ledger_rateValidation from "../ledger/rateValidation.js";
+import type * as ledger_rollups from "../ledger/rollups.js";
 import type * as ledger_testApiProviders from "../ledger/testApiProviders.js";
 import type * as ledger_transfers from "../ledger/transfers.js";
 import type * as ledger_types from "../ledger/types.js";
@@ -102,8 +104,10 @@ declare const fullApi: ApiFromModules<{
   "ledger/fetchLiveRates": typeof ledger_fetchLiveRates;
   "ledger/fx": typeof ledger_fx;
   "ledger/index": typeof ledger_index;
+  "ledger/monthlySummary": typeof ledger_monthlySummary;
   "ledger/rateMonitoring": typeof ledger_rateMonitoring;
   "ledger/rateValidation": typeof ledger_rateValidation;
+  "ledger/rollups": typeof ledger_rollups;
   "ledger/testApiProviders": typeof ledger_testApiProviders;
   "ledger/transfers": typeof ledger_transfers;
   "ledger/types": typeof ledger_types;

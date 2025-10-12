@@ -459,6 +459,17 @@ export const addTransfer = mutation({
         });
       }
 
+      // Update rollups (best-effort, failures don't block transaction)
+      try {
+        await ctx.runMutation(internal.ledger.rollups.updateRollupsOnTransaction, {
+          journalEntryId,
+          updateType: "create",
+        });
+      } catch (rollupError) {
+        console.error(`[Rollup Update] Failed to update rollups for transfer ${journalEntryId}: ${rollupError}`);
+        // Don't throw - rollup updates are best-effort
+      }
+
       return { status: "success" as const, journalEntryId };
     } catch (error: any) {
       return { status: "error" as const, error: error.message || "Unknown error occurred" };
@@ -726,6 +737,17 @@ export const updateTransfer = mutation({
         updatedBy: user._id,
       });
 
+      // Update rollups (best-effort, failures don't block transaction)
+      try {
+        await ctx.runMutation(internal.ledger.rollups.updateRollupsOnTransaction, {
+          journalEntryId,
+          updateType: "update",
+        });
+      } catch (rollupError) {
+        console.error(`[Rollup Update] Failed to update rollups for transfer update ${journalEntryId}: ${rollupError}`);
+        // Don't throw - rollup updates are best-effort
+      }
+
       return { success: true };
     } catch (error: any) {
       return {
@@ -786,6 +808,17 @@ export const deleteTransfer = mutation({
         updateTime: Date.now(),
         updatedBy: user._id,
       });
+
+      // Update rollups (best-effort, failures don't block transaction)
+      try {
+        await ctx.runMutation(internal.ledger.rollups.updateRollupsOnTransaction, {
+          journalEntryId,
+          updateType: "delete",
+        });
+      } catch (rollupError) {
+        console.error(`[Rollup Update] Failed to update rollups for transfer delete ${journalEntryId}: ${rollupError}`);
+        // Don't throw - rollup updates are best-effort
+      }
 
       return { success: true };
     } catch (error: any) {
