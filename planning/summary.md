@@ -4,14 +4,14 @@ This document provides an overview of the PerFi (Personal Finance) application, 
 
 ## Current Project Status
 
-**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project has successfully completed **Phase 1-4.2 of the Accounting Ledger System** implementation. The application features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables (production deployment: January 8, 2025), includes a complete account-to-account transfer system with cross-currency support (completed: October 11, 2025), and now has a comprehensive flexible budget system with real-time execution tracking (completed: October 12, 2025). Current focus: Phase 4.3-4.4 Pre-Aggregation System & UI Integration.
+**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project has successfully completed **Phase 1-4.2 of the Accounting Ledger System** implementation. The application features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables (production deployment: January 8, 2025), includes a complete account-to-account transfer system with cross-currency support (completed: October 11, 2025), and now has a comprehensive flexible budget system with real-time execution tracking (completed and deployed to production: October 12, 2025). Current focus: Phase 4.3 Budget Historical Tracking & Phase 4.4 Pre-Aggregation System.
 
 ### Key Achievements
 - ✅ Complete double-entry accounting ledger system (Phase 1-3)
 - ✅ Production deployment with 100% migration success (353 journal entries, 0 errors)
 - ✅ Dual-write synchronization across all financial operations
 - ✅ **Account-to-account transfer system with cross-currency support (Phase 4.1)**
-- ✅ **Flexible budget system with three scope types and real-time execution tracking (Phase 4.2)**
+- ✅ **Flexible budget system with three scope types and real-time execution tracking (Phase 4.2) - PRODUCTION DEPLOYED**
 - ✅ Complete transaction management system (expenses/income)
 - ✅ Recurring transaction automation with ledger integration
 - ✅ Installment payment scheduling for credit cards
@@ -153,16 +153,17 @@ The database is managed using Convex and includes the following tables:
     *   `description`: (Optional String) Budget description (max 500 characters).
     *   *Indexes*: `by_user` on `userId`, `by_accountId` on `accountId`, `by_user_active` on `userId` and `softdelete` and `creationTime`, `by_nextDueDate` on `nextDueDate`.
 
-*   **`budget_lines`**: Historical budget execution records (Phase 4.2).
+*   **`budget_lines`**: Historical budget execution records (Phase 4.2 - Schema Ready for Phase 4.3).
     *   `budgetId`: (ID referencing `budgets`) Parent budget.
     *   `periodStart`: (Number) Period start timestamp.
     *   `periodEnd`: (Number) Period end timestamp.
     *   `spentAmount`: (Number) Amount spent/earned in period.
     *   `remainingAmount`: (Number) Amount remaining in period.
     *   `percentUsed`: (Number) Percentage of budget used.
+    *   `budgetAmount`: (Number) Budget amount at time of period end (snapshot for historical accuracy).
     *   `status`: (String) "under_budget", "at_budget", or "over_budget".
     *   `createdAt`: (Number) Record creation timestamp.
-    *   *Index*: `by_budgetId_periodStart` on `budgetId` and `periodStart`.
+    *   *Indexes*: `by_budgetId_periodStart` on `budgetId` and `periodStart`, `by_budgetId` on `budgetId`.
 
 *   **`ledger_errors`**: Error tracking for dual-write operations.
     *   `userId`: (ID referencing `users`)
@@ -404,9 +405,9 @@ The database is managed using Convex and includes the following tables:
 
 ## Recent Updates & Current State
 
-### Phase 4.2: Budget System Implementation (✅ COMPLETED - October 12, 2025)
+### Phase 4.2: Budget System Implementation (✅ COMPLETED & DEPLOYED TO PRODUCTION - October 12, 2025)
 
-The application now includes a comprehensive flexible budget system built on the ledger infrastructure. This system provides real-time budget tracking with three flexible scope types and automatic execution calculation from journal entries.
+The application now includes a comprehensive flexible budget system built on the ledger infrastructure and successfully deployed to production. This system provides real-time budget tracking with three flexible scope types and automatic execution calculation from journal entries.
 
 **Budget System Features:**
 - **Three Scope Types**:
@@ -423,6 +424,16 @@ The application now includes a comprehensive flexible budget system built on the
 - **Account Breakdown**: Per-account spending breakdown for multi-account budgets
 - **Budget Utilities**: Reusable period calculation functions for all supported frequencies
 
+**Production Deployment Results:**
+- 1,004 lines of production-grade code deployed
+- 5 public API functions available and operational
+- 41/41 unit tests passing (100% coverage)
+- Schema deployed with 4 new indexes
+- Zero linting/TypeScript errors
+- Production smoke tests passed
+- No critical errors in monitoring
+- All PRD acceptance criteria met
+
 **Architectural Decisions:**
 - Budget execution calculated from journal_lines (source of truth) rather than pre-aggregated data
 - No carryover between budget periods (resets each period)
@@ -431,6 +442,7 @@ The application now includes a comprehensive flexible budget system built on the
 - Quarter boundaries: Q1 (Jan-Mar), Q2 (Apr-Jun), Q3 (Jul-Sep), Q4 (Oct-Dec)
 - Semester boundaries: H1 (Jan-Jun), H2 (Jul-Dec)
 - Budget amounts stored in minor units (base currency) for precision
+- Budget_lines schema prepared for Phase 4.3 historical tracking with budgetAmount snapshot field
 
 ### Phase 4.1: Transfer Implementation (✅ COMPLETED - October 11, 2025)
 
@@ -521,12 +533,18 @@ The application features a complete double-entry bookkeeping system with dual-wr
 - ✅ Complete audit trail with user tracking
 
 **🔄 In Progress (Phase 4.3-4.4):**
-- 🔄 Phase 4.3: Pre-Aggregation System (IN PLANNING)
+- 🔄 Phase 4.3: Budget Historical Tracking (IN PLANNING)
+  - Automated background job capturing budget execution at period boundaries
+  - Budget_lines table populated with historical execution snapshots
+  - Historical query endpoints showing budget performance over time
+  - Time-series data enabling trend analysis and pattern recognition
+  - Support for all six budget frequencies with graceful handling of budget modifications
+- 🔄 Phase 4.4: Pre-Aggregation System (IN PLANNING)
   - Monthly rollups table for performance optimization
   - Background job for rollup reconciliation
   - Best-effort synchronous updates on transactions
   - Home dashboard integration using pre-aggregated data
-- 🔄 Phase 4.4: UI Integration (IN PLANNING)
+- 🔄 Phase 4.5: UI Integration (IN PLANNING)
   - Budget management UI components
   - Budget execution display in Home dashboard
   - Transfer creation and history UI
@@ -555,18 +573,27 @@ The application features a complete double-entry bookkeeping system with dual-wr
 
 ### Next Steps
 
-**Current Focus: Phase 4.3-4.4 (Pre-Aggregation & UI Integration)**
+**Current Focus: Phase 4.3 Budget Historical Tracking**
 
-The budget system backend implementation is complete. Next immediate steps:
+The budget system backend implementation is complete and deployed to production. Next immediate steps:
 
-1. **Pre-Aggregation System** (Phase 4.3):
+1. **Budget Historical Tracking** (Phase 4.3):
+   - Implement automated background job capturing budget execution at period boundaries
+   - Populate budget_lines table with historical execution snapshots
+   - Create historical query endpoints showing budget performance over time
+   - Enable time-series data for trend analysis and pattern recognition
+   - Support all six budget frequencies with graceful handling of budget modifications
+   - Add cron job for daily period rollover processing
+   - Implement backfill utilities for missing historical data
+
+2. **Pre-Aggregation System** (Phase 4.4):
    - Design and implement `monthly_rollups` table for performance optimization
    - Create background cron job for rollup reconciliation and correction
    - Implement best-effort synchronous rollup updates on transaction mutations
    - Build query functions for Home dashboard using pre-aggregated data
    - Add rollup metrics and monitoring
 
-2. **UI Integration** (Phase 4.4):
+3. **UI Integration** (Phase 4.5):
    - **Budget Management UI**:
      - Budget creation form with scope type selector
      - Budget list view with current execution status
@@ -582,10 +609,10 @@ The budget system backend implementation is complete. Next immediate steps:
      - Show monthly trends with pre-aggregated data
      - Optimize queries with indexed rollup lookups
 
-3. **Testing & Documentation**:
-   - Unit tests for rollup calculation logic
-   - Integration tests for budget UI flows
-   - E2E tests for transfer creation
+4. **Testing & Documentation**:
+   - Unit tests for budget historical tracking logic
+   - Integration tests for cron job processing
+   - E2E tests for budget UI flows
    - Update API documentation
 
 **Future Phases:**
@@ -599,5 +626,7 @@ The budget system backend implementation is complete. Next immediate steps:
 - `planning/accounting.md`: Complete accounting system roadmap
 - `planning/accountingSteps/Phase4.1-TransferImplementation.md`: Transfer system specifications
 - `planning/accountingSteps/Phase4.2-BudgetSystem.md`: Budget system specifications
+- `planning/accountingSteps/Phase4.3-BudgetHistoricalTracking.md`: Budget historical tracking specifications
+- `PRODUCTION-DEPLOYMENT-PHASE-4.2.md`: Phase 4.2 production deployment report
 - `docs/PHASE-4.2-TEST-REPORT.md`: Budget system test results
 - `docs/`: Implementation documentation and test reports

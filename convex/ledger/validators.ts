@@ -57,3 +57,10 @@ export const sourceTypeValidator = v.union(
   v.literal("statement"),
   v.literal("other")
 );
+
+// Budget status enum
+export const budgetStatusValidator = v.union(
+  v.literal("under_budget"),
+  v.literal("at_budget"),
+  v.literal("over_budget")
+);

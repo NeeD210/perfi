@@ -1,9 +1,13 @@
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
 
-// Run every day at midnight
 const crons = cronJobs();
 
+// Run recurring transactions processing every day at midnight (00:00 UTC)
 crons.cron("processRecurringTransactions", "0 0 * * *", internal.internal.recurring.processRecurringTransactions);
+
+// Run budget period rollover every day at 00:05 UTC (5 minutes after midnight)
+// Captures budget execution at period boundaries and creates historical budget_lines records
+crons.cron("budgetRollover", "5 0 * * *", internal.ledger.budgetLines.processBudgetRollover);
 
 export default crons; 

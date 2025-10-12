@@ -198,3 +198,36 @@ export function calculateNextDueDate(
   }
 }
 
+/**
+ * Generate all period boundaries within a date range for a given frequency.
+ * 
+ * Used for backfilling historical budget lines.
+ * 
+ * @param frequency - Budget frequency
+ * @param rangeStart - Start of date range (epoch ms)
+ * @param rangeEnd - End of date range (epoch ms)
+ * @returns Array of period boundaries, each with periodStart and periodEnd
+ */
+export function generatePeriodBoundariesInRange(
+  frequency: Frequency,
+  rangeStart: number,
+  rangeEnd: number
+): PeriodBoundaries[] {
+  const periods: Array<PeriodBoundaries> = [];
+  let currentDate = rangeStart;
+  
+  while (currentDate <= rangeEnd) {
+    const { periodStart, periodEnd } = calculatePeriodBoundaries(frequency, currentDate);
+    
+    // Only include period if it's fully within the range
+    if (periodEnd <= rangeEnd) {
+      periods.push({ periodStart, periodEnd });
+    }
+    
+    // Move to next period (1ms past current period end)
+    currentDate = periodEnd + 1;
+  }
+  
+  return periods;
+}
+

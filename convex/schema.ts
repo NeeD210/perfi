@@ -218,16 +218,21 @@ export default defineSchema({
 
   budget_lines: defineTable({
     budgetId: v.id("budgets"),
-    userId: v.id("users"),
-    accountId: v.id("accounts"),
-    amount: v.number(),
-    startDate: v.number(),
-    endDate: v.number(),
-    softdelete: v.boolean(),
-    deletedAt: v.optional(v.number()),
+    periodStart: v.number(), // Epoch ms (inclusive) of period start
+    periodEnd: v.number(), // Epoch ms (inclusive) of period end
+    spentAmount: v.number(), // Amount spent/earned in period (minor units)
+    remainingAmount: v.number(), // budgetAmount - spentAmount (can be negative)
+    percentUsed: v.number(), // (spentAmount / budgetAmount) * 100, capped at 999
+    budgetAmount: v.number(), // Budget amount at time of period end (snapshot for historical accuracy)
+    status: v.union(
+      v.literal("under_budget"),
+      v.literal("at_budget"),
+      v.literal("over_budget")
+    ),
+    createdAt: v.number(), // Epoch ms when this record was created (audit trail)
   })
-    .index("by_budgetId", ["budgetId"])
-    .index("by_user", ["userId"]),
+    .index("by_budgetId_periodStart", ["budgetId", "periodStart"])
+    .index("by_budgetId", ["budgetId"]),
 
   recurring_entries: defineTable({
     userId: v.id("users"),

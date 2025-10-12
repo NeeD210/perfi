@@ -10,7 +10,7 @@
  * - Handles soft-deleted accounts gracefully
  */
 
-import { query, QueryCtx } from "../_generated/server";
+import { query, QueryCtx, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
@@ -387,6 +387,146 @@ export const listBudgets = query({
     budgetSummaries.sort((a, b) => b.creationTime - a.creationTime);
 
     return budgetSummaries;
+  },
+});
+
+// ============================================================================
+// CALCULATE EXECUTION FOR PERIOD (INTERNAL QUERY FOR HISTORICAL TRACKING)
+// ============================================================================
+
+/**
+ * Calculate budget execution for a specific historical period.
+ * 
+ * Used by:
+ * - Budget rollover cron job to capture execution at period boundaries
+ * - Backfill utility to create missing historical lines
+ * - Analytics and reporting features
+ * 
+ * This function reuses the same execution logic as real-time calculation but for arbitrary periods.
+ * 
+ * @param budgetId - Budget to calculate execution for
+ * @param periodStart - Start of period (epoch ms, inclusive)
+ * @param periodEnd - End of period (epoch ms, inclusive)
+ * @returns Execution summary with spent amount, remaining, status, or null if budget not found
+ * @internal This is an internal function for cron job and utilities
+ */
+export const calculateExecutionForPeriod = internalQuery({
+  args: {
+    budgetId: v.id("budgets"),
+    periodStart: v.number(),
+    periodEnd: v.number(),
+  },
+  returns: v.union(
+    v.object({
+      spentAmount: v.number(),
+      remainingAmount: v.number(),
+      percentUsed: v.number(),
+      status: v.union(
+        v.literal("under_budget"),
+        v.literal("at_budget"),
+        v.literal("over_budget")
+      ),
+    }),
+    v.null()
+  ),
+  handler: async (ctx, args) => {
+    // 1. Retrieve budget
+    const budget = await ctx.db.get(args.budgetId);
+    if (!budget) return null;
+
+    // 2. Determine accounts in scope (same logic as getBudgetExecution)
+    const accountIds: Array<Id<"accounts">> = [];
+
+    if (budget.scopeType === "singleAccount") {
+      if (budget.accountId) {
+        const account = await ctx.db.get(budget.accountId);
+        if (account && !account.softdelete) {
+          accountIds.push(budget.accountId);
+        }
+      }
+    } else if (budget.scopeType === "multipleAccounts") {
+      if (budget.scopeRefs && budget.scopeRefs.length > 0) {
+        const accountPromises = budget.scopeRefs.map((id) => ctx.db.get(id));
+        const accounts = await Promise.all(accountPromises);
+        for (const account of accounts) {
+          if (account && !account.softdelete) {
+            accountIds.push(account._id);
+          }
+        }
+      }
+    } else if (budget.scopeType === "accountType") {
+      if (budget.scopeAccountType) {
+        const accounts = await ctx.db
+          .query("accounts")
+          .withIndex("by_user_type_active", (q) =>
+            q
+              .eq("userId", budget.userId)
+              .eq("accountType", budget.scopeAccountType!)
+              .eq("softdelete", false)
+          )
+          .collect();
+        accountIds.push(...accounts.map((a) => a._id));
+      }
+    }
+
+    // 3. Aggregate journal_lines for accounts in period (parallelized for performance)
+    let spentAmount = 0;
+
+    // Parallelize journal_lines queries
+    const linePromises = accountIds.map((accountId) =>
+      ctx.db
+        .query("journal_lines")
+        .withIndex("by_accountId_date", (q) =>
+          q
+            .eq("accountId", accountId)
+            .gte("entryDate", args.periodStart)
+            .lte("entryDate", args.periodEnd)
+        )
+        .collect()
+    );
+
+    const linesArrays = await Promise.all(linePromises);
+
+    // Process each account's lines
+    for (let i = 0; i < accountIds.length; i++) {
+      const accountId = accountIds[i];
+      const lines = linesArrays[i];
+
+      const account = await ctx.db.get(accountId);
+      if (!account || account.softdelete) continue;
+
+      // Sum amounts based on account type and direction
+      for (const line of lines) {
+        if (account.accountType === "expense" && line.direction === "debit") {
+          // Expense account: debits increase spending (positive amount)
+          spentAmount += line.amountBaseCurrency;
+        } else if (account.accountType === "income" && line.direction === "credit") {
+          // Income account: credits increase earning (positive amount)
+          spentAmount += line.amountBaseCurrency;
+        }
+      }
+    }
+
+    // 4. Calculate derived values
+    const remainingAmount = budget.amount - spentAmount;
+    const percentUsed = budget.amount > 0 ? Math.min((spentAmount / budget.amount) * 100, 999) : 0;
+
+    // 5. Determine status
+    let status: "under_budget" | "at_budget" | "over_budget";
+    if (spentAmount < budget.amount) {
+      status = "under_budget";
+    } else if (spentAmount >= budget.amount && spentAmount < budget.amount * 1.05) {
+      status = "at_budget";
+    } else {
+      status = "over_budget";
+    }
+
+    return {
+      spentAmount,
+      remainingAmount,
+      percentUsed,
+      status,
+    };
   },
 });
 

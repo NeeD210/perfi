@@ -10,7 +10,7 @@
  * All budgets have frequency-based periods (daily through yearly) with no carryover.
  */
 
-import { mutation } from "../_generated/server";
+import { mutation, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { Id } from "../_generated/dataModel";
@@ -404,6 +404,70 @@ export const deleteBudget = mutation({
 
     // 4. Return success
     return { budgetId: args.budgetId, status: "success" as const };
+  },
+});
+
+// ============================================================================
+// INTERNAL QUERIES AND MUTATIONS FOR BUDGET ROLLOVER
+// ============================================================================
+
+/**
+ * List all active budgets (not soft-deleted).
+ * Used by the budget rollover cron job to process period rollovers.
+ * 
+ * @returns Array of active budgets
+ * @internal This is an internal function used by the cron job
+ */
+export const listActiveBudgets = internalQuery({
+  args: {},
+  returns: v.array(
+    v.object({
+      _id: v.id("budgets"),
+      userId: v.id("users"),
+      accountId: v.optional(v.id("accounts")),
+      amount: v.number(),
+      frequency: frequencyValidator,
+      nextDueDate: v.number(),
+      endDate: v.optional(v.number()),
+      creationTime: v.number(),
+      softdelete: v.boolean(),
+      deletedAt: v.optional(v.number()),
+      scopeType: scopeTypeValidator,
+      scopeRefs: v.optional(v.array(v.id("accounts"))),
+      scopeAccountType: v.optional(v.union(v.literal("expense"), v.literal("income"))),
+      description: v.optional(v.string()),
+    })
+  ),
+  handler: async (ctx) => {
+    // Query all budgets (not filtered by softdelete yet to support soft-delete logic in cron)
+    const allBudgets = await ctx.db
+      .query("budgets")
+      .collect();
+    
+    return allBudgets;
+  },
+});
+
+/**
+ * Update a budget's nextDueDate field.
+ * Used by the budget rollover cron job after creating budget_lines record.
+ * 
+ * @param budgetId - Budget to update
+ * @param nextDueDate - New nextDueDate value
+ * @internal This is an internal function used by the cron job
+ */
+export const updateNextDueDate = internalMutation({
+  args: {
+    budgetId: v.id("budgets"),
+    nextDueDate: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.budgetId, {
+      nextDueDate: args.nextDueDate,
+    });
+    
+    return null;
   },
 });
 

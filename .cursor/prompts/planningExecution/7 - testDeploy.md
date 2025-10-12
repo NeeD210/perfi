@@ -1,8 +1,3 @@
-This step integrates the final commit and handles the high-stakes world of production deployment and initial monitoring. The agent acts as a rigorous DevOps engineer.
-
-#### **Prompt Template: `DeployAndMonitor_Architect`**
-
-```text
 # Step: DeployAndMonitor
 
 ## Objective

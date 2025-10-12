@@ -53,3 +53,11 @@ export {
   validateExchangeRate,
   calculateDestinationAmount,
 } from "./transfers";
+
+// Export budget functions
+export * from "./budgets";
+export * from "./budgetExecution";
+export * from "./budgetHistory";
+export * from "./budgetLines";
+export { generatePeriodBoundariesInRange } from "./budgetUtils";
+export * from "./validators";
