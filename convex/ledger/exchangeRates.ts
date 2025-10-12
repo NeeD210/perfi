@@ -39,7 +39,7 @@ const MAJOR_CURRENCY_PAIRS = [
  * Get exchange rate with on-demand fetching and caching
  * This is the main query that applications should use
  */
-export const getExchangeRate = query({
+export const getExchangeRate = internalQuery({
   args: {
     fromCurrency: v.string(),
     toCurrency: v.string(),
@@ -312,15 +312,15 @@ export const batchFetchRates = internalAction({
           targetCurrencies
         );
         
-        // Store each rate
-        for (const rate of rates) {
-          await ctx.runMutation(internal.exchangeRates.storeRate, {
-            pairCurrency: rate.pairCurrency,
-            rate: rate.rate,
-            inverseRate: rate.inverseRate,
-            date: targetDate,
-            source: rate.source,
-          });
+      // Store each rate
+      for (const rate of rates) {
+        await ctx.runMutation(internal.ledger.exchangeRates.storeRate, {
+          pairCurrency: rate.pairCurrency,
+          rate: rate.rate,
+          inverseRate: rate.inverseRate,
+          date: targetDate,
+          source: rate.source,
+        });
           
           results.push({ pair: rate.pairCurrency, success: true });
         }
@@ -408,15 +408,23 @@ export const getProviderHealth = query({
 /**
  * Convert amount using exchange rate
  */
-export const convertAmount = query({
+export const convertAmount = internalQuery({
   args: {
     amount: v.number(),
     fromCurrency: v.string(),
     toCurrency: v.string(),
     date: v.optional(v.number()),
   },
+  returns: v.object({
+    originalAmount: v.number(),
+    convertedAmount: v.number(),
+    rate: v.number(),
+    source: v.string(),
+    fromCurrency: v.string(),
+    toCurrency: v.string(),
+  }),
   handler: async (ctx, args) => {
-    const rateResult = await ctx.runQuery(internal.exchangeRates.getExchangeRate, {
+    const rateResult: any = await ctx.runQuery(internal.ledger.exchangeRates.getExchangeRate, {
       fromCurrency: args.fromCurrency,
       toCurrency: args.toCurrency,
       date: args.date,

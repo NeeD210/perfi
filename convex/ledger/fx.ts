@@ -153,7 +153,7 @@ export const getRateForDate = internalQuery({
     const { pairCurrency, date } = args;
 
     // Use the new exchange rate service to get rate for specific date
-    const rate = await ctx.runQuery(internal.exchangeRates.getRateForDate, {
+    const rate = await ctx.runQuery(internal.ledger.exchangeRates.getRateForDate, {
       pairCurrency,
       date,
     });
@@ -175,7 +175,7 @@ export const storeExchangeRate = internalMutation({
     const { pairCurrency, rate, date, source } = args;
 
     // Use the new exchange rate service to store the rate
-    await ctx.runMutation(internal.exchangeRates.storeRate, {
+    await ctx.runMutation(internal.ledger.exchangeRates.storeRate, {
       pairCurrency,
       rate,
       inverseRate: 1 / rate,
@@ -307,12 +307,14 @@ export const getCurrentExchangeRate = query({
     toCurrency: v.string(),
     date: v.optional(v.number()),
   },
+  returns: v.any(),
   handler: async (ctx, args) => {
-    return await ctx.runQuery(internal.exchangeRates.getExchangeRate, {
+    const result: any = await ctx.runQuery(internal.ledger.exchangeRates.getExchangeRate, {
       fromCurrency: args.fromCurrency,
       toCurrency: args.toCurrency,
       date: args.date,
     });
+    return result;
   },
 });
 
@@ -324,12 +326,14 @@ export const convertAmountPublic = query({
     toCurrency: v.string(),
     date: v.optional(v.number()),
   },
+  returns: v.any(),
   handler: async (ctx, args) => {
-    return await ctx.runQuery(internal.exchangeRates.convertAmount, {
+    const result: any = await ctx.runQuery(internal.ledger.exchangeRates.convertAmount, {
       amount: args.amount,
       fromCurrency: args.fromCurrency,
       toCurrency: args.toCurrency,
       date: args.date,
     });
+    return result;
   },
 });

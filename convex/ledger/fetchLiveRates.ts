@@ -19,6 +19,7 @@ export const fetchFromCurrencyAPI = internalAction({
     baseCurrency: v.string(),
     targetCurrencies: v.array(v.string()),
   },
+  returns: v.any(),
   handler: async (ctx, args) => {
     const apiKey = process.env.CURRENCY_API_KEY;
     if (!apiKey) {
@@ -50,7 +51,7 @@ export const fetchFromCurrencyAPI = internalAction({
         const rate = (rateInfo as any).value;
         const pairCurrency = `${args.baseCurrency}/${currency}`;
         
-        await ctx.runMutation(internal.exchangeRates.storeRate, {
+        await ctx.runMutation(internal.ledger.exchangeRates.storeRate, {
           pairCurrency,
           rate,
           inverseRate: 1 / rate,
@@ -79,6 +80,7 @@ export const fetchFromAbstractAPI = internalAction({
     baseCurrency: v.string(),
     targetCurrencies: v.array(v.string()),
   },
+  returns: v.any(),
   handler: async (ctx, args) => {
     const apiKey = process.env.ABSTRACT_API_KEY;
     if (!apiKey) {
@@ -87,7 +89,7 @@ export const fetchFromAbstractAPI = internalAction({
 
     const now = Date.now();
     const targetDate = getStartOfDay(now);
-    const storedRates = [];
+    const storedRates: Array<any> = [];
     let totalResponseTime = 0;
 
     // AbstractAPI requires individual requests per currency pair
@@ -114,7 +116,7 @@ export const fetchFromAbstractAPI = internalAction({
         const rate = data.exchange_rates[targetCurrency];
         const pairCurrency = `${args.baseCurrency}/${targetCurrency}`;
         
-        await ctx.runMutation(internal.exchangeRates.storeRate, {
+        await ctx.runMutation(internal.ledger.exchangeRates.storeRate, {
           pairCurrency,
           rate,
           inverseRate: 1 / rate,
@@ -140,8 +142,9 @@ export const fetchFromAbstractAPI = internalAction({
  */
 export const fetchMajorCurrencyRates = action({
   args: {},
+  returns: v.any(),
   handler: async (ctx) => {
-    const results = [];
+    const results: Array<any> = [];
 
     // Fetch USD-based rates directly (avoid nested runAction calls)
     try {
@@ -153,7 +156,7 @@ export const fetchMajorCurrencyRates = action({
         
         const now = Date.now();
         const targetDate = getStartOfDay(now);
-        const storedRates = [];
+        const storedRates: Array<any> = [];
 
         if (data.data) {
           for (const [currency, rateInfo] of Object.entries(data.data)) {
@@ -192,7 +195,7 @@ export const fetchMajorCurrencyRates = action({
         
         const now = Date.now();
         const targetDate = getStartOfDay(now);
-        const storedRates = [];
+        const storedRates: Array<any> = [];
 
         if (data.data) {
           for (const [currency, rateInfo] of Object.entries(data.data)) {

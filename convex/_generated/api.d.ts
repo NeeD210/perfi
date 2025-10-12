@@ -36,6 +36,7 @@ import type * as ledger_index from "../ledger/index.js";
 import type * as ledger_rateMonitoring from "../ledger/rateMonitoring.js";
 import type * as ledger_rateValidation from "../ledger/rateValidation.js";
 import type * as ledger_testApiProviders from "../ledger/testApiProviders.js";
+import type * as ledger_transfers from "../ledger/transfers.js";
 import type * as ledger_types from "../ledger/types.js";
 import type * as ledger_validators from "../ledger/validators.js";
 import type * as lib_scheduling from "../lib/scheduling.js";
@@ -94,6 +95,7 @@ declare const fullApi: ApiFromModules<{
   "ledger/rateMonitoring": typeof ledger_rateMonitoring;
   "ledger/rateValidation": typeof ledger_rateValidation;
   "ledger/testApiProviders": typeof ledger_testApiProviders;
+  "ledger/transfers": typeof ledger_transfers;
   "ledger/types": typeof ledger_types;
   "ledger/validators": typeof ledger_validators;
   "lib/scheduling": typeof lib_scheduling;

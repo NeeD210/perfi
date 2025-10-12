@@ -81,10 +81,10 @@ export const validateExchangeRate = internalQuery({
     errors: v.array(v.string()),
     confidence: v.number(),
   }),
-  handler: async (ctx, args): Promise<RateValidationResult> => {
+  handler: async (ctx, args) => {
     const { rate, currencyPair, previousRate, historicalRates } = args;
-    const warnings: string[] = [];
-    const errors: string[] = [];
+    const warnings: Array<string> = [];
+    const errors: Array<string> = [];
     let confidence = 1.0;
 
     // Basic validation
@@ -128,7 +128,7 @@ export const validateExchangeRate = internalQuery({
 
       // Check against historical data
       if (historicalRates && historicalRates.length > 0) {
-        const avgHistorical = historicalRates.reduce((sum, r) => sum + r, 0) / historicalRates.length;
+        const avgHistorical = historicalRates.reduce((sum: number, r: number) => sum + r, 0) / historicalRates.length;
         const deviationFromAverage = Math.abs(rate - avgHistorical) / avgHistorical;
         
         if (deviationFromAverage > 0.2) { // 20% deviation
@@ -167,7 +167,7 @@ export const compareProviderRates = internalQuery({
       v.literal("manual_review")
     ),
   }),
-  handler: async (ctx, args): Promise<ProviderComparisonResult> => {
+  handler: async (ctx, args) => {
     const { primaryRate, secondaryRate, currencyPair } = args;
     
     const difference = Math.abs(primaryRate - secondaryRate);
@@ -349,33 +349,33 @@ export const comprehensiveRateValidation = internalQuery({
     const { rate, currencyPair, source, previousRate, historicalRates, providerRates } = args;
     
     // Run all validation checks
-    const basicValidation = await ctx.runQuery(internal.rateValidation.validateExchangeRate, {
+    const basicValidation: any = await ctx.runQuery(internal.ledger.rateValidation.validateExchangeRate, {
       rate,
       currencyPair,
       previousRate,
       historicalRates,
     });
 
-    const boundsValidation = await ctx.runQuery(internal.rateValidation.validateExchangeRate, {
+    const boundsValidation: any = await ctx.runQuery(internal.ledger.rateValidation.validateExchangeRate, {
       rate,
       currencyPair,
       previousRate,
       historicalRates,
     });
 
-    const anomalyValidation = await ctx.runQuery(internal.rateValidation.detectRateAnomalies, {
+    const anomalyValidation: any = await ctx.runQuery(internal.ledger.rateValidation.detectRateAnomalies, {
       currentRate: rate,
       historicalRates: historicalRates || [],
       currencyPair,
     });
 
     // Provider comparison (if multiple rates available)
-    let providerValidation = { isValid: true, warnings: [] as string[] };
+    let providerValidation: { isValid: boolean; warnings: Array<string> } = { isValid: true, warnings: [] };
     if (providerRates && providerRates.length > 1) {
       const primaryRate = providerRates[0].rate;
       const secondaryRate = providerRates[1].rate;
       
-      const comparison = await ctx.runQuery(internal.rateValidation.compareProviderRates, {
+      const comparison: any = await ctx.runQuery(internal.ledger.rateValidation.compareProviderRates, {
         primaryRate,
         secondaryRate,
         currencyPair,
@@ -388,12 +388,12 @@ export const comprehensiveRateValidation = internalQuery({
     }
 
     // Calculate overall confidence
-    const confidenceFactors = [
+    const confidenceFactors: Array<number> = [
       basicValidation.confidence,
       anomalyValidation.confidence,
       providerValidation.isValid ? 1 : 0.5,
     ];
-    const overallConfidence = confidenceFactors.reduce((sum, cf) => sum + cf, 0) / confidenceFactors.length;
+    const overallConfidence: number = confidenceFactors.reduce((sum: number, cf: number) => sum + cf, 0) / confidenceFactors.length;
 
     // Determine recommendation
     let recommendation: 'accept' | 'accept_with_warning' | 'reject' | 'manual_review';

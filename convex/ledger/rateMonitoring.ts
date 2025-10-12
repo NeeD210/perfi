@@ -185,7 +185,7 @@ export const checkStaleRates = internalQuery({
 /**
  * Get provider health status
  */
-export const getProviderHealthStatus = query({
+export const getProviderHealthStatus = internalQuery({
   args: {},
   handler: async (ctx) => {
     // This is a simplified implementation. In production, this would
@@ -415,14 +415,19 @@ export const getCurrentAlerts = query({
  */
 export const healthCheck = query({
   args: {},
+  returns: v.object({
+    healthy: v.boolean(),
+    timestamp: v.number(),
+    details: v.any(),
+  }),
   handler: async (ctx) => {
-    const staleRates = await ctx.runQuery(internal.rateMonitoring.checkStaleRates, {});
-    const providerHealth = await ctx.runQuery(internal.rateMonitoring.getProviderHealthStatus, {});
+    const staleRates: any = await ctx.runQuery(internal.ledger.rateMonitoring.checkStaleRates, {});
+    const providerHealth: any = await ctx.runQuery(internal.ledger.rateMonitoring.getProviderHealthStatus, {});
     
-    const hasStaleRates = staleRates.length > 0;
-    const hasUnhealthyProviders = Object.values(providerHealth).some((p: any) => !p.healthy);
+    const hasStaleRates: boolean = staleRates.length > 0;
+    const hasUnhealthyProviders: boolean = Object.values(providerHealth).some((p: any) => !p.healthy);
     
-    const overallHealth = !hasStaleRates && !hasUnhealthyProviders;
+    const overallHealth: boolean = !hasStaleRates && !hasUnhealthyProviders;
     
     return {
       healthy: overallHealth,

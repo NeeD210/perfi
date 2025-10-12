@@ -140,6 +140,7 @@ export default defineSchema({
     updatedBy: v.optional(v.id("users")),
   })
     .index("by_user_date", ["userId", "date"])
+    .index("by_user_sourceType_date", ["userId", "sourceType", "date"])
     .index("by_user_status_date", ["userId", "status", "date"])
     .index("by_sourceType_sourceId", ["sourceType", "sourceId"])
     .index("by_idempotencyKey", ["idempotencyKey"]),

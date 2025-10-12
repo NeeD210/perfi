@@ -7,7 +7,7 @@
 
 "use node";
 
-import { action } from "../_generated/server";
+import { action, internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 
@@ -21,12 +21,13 @@ function getStartOfDay(timestamp: number): number {
 /**
  * Fetch historical rate for a specific date (e.g., September 26, 2025)
  */
-export const fetchHistoricalRate = action({
+export const fetchHistoricalRate = internalAction({
   args: {
     fromCurrency: v.string(),
     toCurrency: v.string(),
     date: v.string(), // Format: "YYYY-MM-DD" or "DD/MM/YY" or epoch ms
   },
+  returns: v.any(),
   handler: async (ctx, args) => {
     // Parse date string to epoch milliseconds
     let targetDate: number;
@@ -57,7 +58,7 @@ export const fetchHistoricalRate = action({
     const currencyPair = `${args.fromCurrency}/${args.toCurrency}`;
     
     // First check if we already have this rate cached
-    const existingRate = await ctx.runQuery(internal.ledger.exchangeRates.getRateForDate, {
+    const existingRate: any = await ctx.runQuery(internal.ledger.exchangeRates.getRateForDate, {
       pairCurrency: currencyPair,
       date: targetDate,
     });
@@ -81,7 +82,7 @@ export const fetchHistoricalRate = action({
       });
 
       // Get the newly stored rate
-      const newRate = await ctx.runQuery(internal.ledger.exchangeRates.getRateForDate, {
+      const newRate: any = await ctx.runQuery(internal.ledger.exchangeRates.getRateForDate, {
         pairCurrency: currencyPair,
         date: targetDate,
       });
@@ -118,13 +119,14 @@ export const fetchHistoricalRate = action({
 /**
  * Fetch multiple historical rates for a date range
  */
-export const fetchHistoricalRateRange = action({
+export const fetchHistoricalRateRange = internalAction({
   args: {
     fromCurrency: v.string(),
     toCurrency: v.string(),
     startDate: v.string(), // Format: "YYYY-MM-DD" or "DD/MM/YY"
     endDate: v.string(),   // Format: "YYYY-MM-DD" or "DD/MM/YY"
   },
+  returns: v.any(),
   handler: async (ctx, args) => {
     // Parse dates
     const parseDate = (dateStr: string): number => {
@@ -143,7 +145,7 @@ export const fetchHistoricalRateRange = action({
     const startTimestamp = getStartOfDay(parseDate(args.startDate));
     const endTimestamp = getStartOfDay(parseDate(args.endDate));
     
-    const results = [];
+    const results: Array<any> = [];
     let currentDate = startTimestamp;
     
     // Fetch rates for each day in the range
@@ -151,7 +153,7 @@ export const fetchHistoricalRateRange = action({
       const dateStr = new Date(currentDate).toISOString().split('T')[0];
       
       try {
-        const result = await ctx.runAction(ctx.action(fetchHistoricalRate), {
+        const result = await ctx.runAction(internal.ledger.fetchHistoricalRates.fetchHistoricalRate, {
           fromCurrency: args.fromCurrency,
           toCurrency: args.toCurrency,
           date: dateStr,
@@ -187,13 +189,15 @@ export const fetchHistoricalRateRange = action({
  */
 export const testSeptember26Rate = action({
   args: {},
-  handler: async (ctx) => {
-    // Call the handler directly
-    return await fetchHistoricalRate.handler(ctx, {
+  returns: v.any(),
+  handler: async (ctx): Promise<any> => {
+    // Call via runAction instead of directly
+    const result: any = await ctx.runAction(internal.ledger.fetchHistoricalRates.fetchHistoricalRate, {
       fromCurrency: 'USD',
       toCurrency: 'ARS',
       date: '26/9/25',  // September 26, 2025
     });
+    return result;
   },
 });
 

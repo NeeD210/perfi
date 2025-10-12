@@ -40,3 +40,16 @@ export {
   logExchangeRateError,
   trackExchangeRateOperation,
 } from "./errorTracking";
+
+// Export transfer functions
+export {
+  addTransfer,
+  listTransfers,
+  getTransferDetails,
+  updateTransfer,
+  deleteTransfer,
+  validateTransferAccounts,
+  validateTransferAmount,
+  validateExchangeRate,
+  calculateDestinationAmount,
+} from "./transfers";
