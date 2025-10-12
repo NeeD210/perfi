@@ -775,13 +775,16 @@ The following steps provide a detailed, ordered implementation plan for the PerF
 - Load testing for pagination and aggregations
 - **Deliverable**: Comprehensive test coverage
 
-#### Step 10.3 — Documentation & Training
+#### Step 10.3 — Cleanup
+- Delete all deprecated code and documentation
+
+#### Step 10.4 — Documentation & Training
 - Update API documentation
 - Create migration guide for developers
 - Document all enums, validators, and business rules
 - **Deliverable**: Complete documentation
 
-#### Step 10.4 — Internationalization (Optional)
+#### Step 10.5 — Internationalization
 - Add Spanish translations
 - Localize currency formatting
 - Adapt date/time display for timezone

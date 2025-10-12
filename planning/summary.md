@@ -4,12 +4,14 @@ This document provides an overview of the PerFi (Personal Finance) application, 
 
 ## Current Project Status
 
-**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project has successfully completed **Phase 1-3 of the Accounting Ledger System** implementation with production deployment on January 8, 2025. The application now features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables.
+**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project has successfully completed **Phase 1-4.2 of the Accounting Ledger System** implementation. The application features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables (production deployment: January 8, 2025), includes a complete account-to-account transfer system with cross-currency support (completed: October 11, 2025), and now has a comprehensive flexible budget system with real-time execution tracking (completed: October 12, 2025). Current focus: Phase 4.3-4.4 Pre-Aggregation System & UI Integration.
 
 ### Key Achievements
 - ✅ Complete double-entry accounting ledger system (Phase 1-3)
 - ✅ Production deployment with 100% migration success (353 journal entries, 0 errors)
 - ✅ Dual-write synchronization across all financial operations
+- ✅ **Account-to-account transfer system with cross-currency support (Phase 4.1)**
+- ✅ **Flexible budget system with three scope types and real-time execution tracking (Phase 4.2)**
 - ✅ Complete transaction management system (expenses/income)
 - ✅ Recurring transaction automation with ledger integration
 - ✅ Installment payment scheduling for credit cards
@@ -52,7 +54,7 @@ The database is managed using Convex and includes the following tables:
     *   `creationTime`: (Number) Account creation timestamp.
     *   `softdelete`: (Boolean) Flag for soft deletion.
     *   `deletedAt`: (Optional Number) Timestamp of soft deletion.
-    *   *Indexes*: `by_user` on `userId`, `by_user_type` on `userId` and `accountType`.
+    *   *Indexes*: `by_user` on `userId`, `by_user_type` on `userId` and `accountType`, `by_user_type_active` on `userId`, `accountType`, and `softdelete`.
 
 *   **`journal_entries`**: Financial transactions in double-entry format.
     *   `userId`: (ID referencing `users`) The user who owns this entry.
@@ -134,6 +136,33 @@ The database is managed using Convex and includes the following tables:
     *   `rate`: (Number) Exchange rate.
     *   `effectiveDate`: (Number) When rate became effective.
     *   *Index*: `by_currencies_date` on currency pair and date.
+
+*   **`budgets`**: Budget definitions with flexible scoping (Phase 4.2).
+    *   `userId`: (ID referencing `users`) The user who owns this budget.
+    *   `accountId`: (Optional ID referencing `accounts`) Account for singleAccount scope only.
+    *   `amount`: (Number) Budget limit in minor units (base currency).
+    *   `frequency`: (String) "daily", "weekly", "monthly", "quarterly", "semestrally", or "yearly".
+    *   `nextDueDate`: (Number) Next period start timestamp.
+    *   `endDate`: (Optional Number) Budget expiration date.
+    *   `creationTime`: (Number) Budget creation timestamp.
+    *   `softdelete`: (Boolean) Flag for soft deletion.
+    *   `deletedAt`: (Optional Number) Timestamp of soft deletion.
+    *   `scopeType`: (String) "singleAccount", "multipleAccounts", or "accountType".
+    *   `scopeRefs`: (Optional Array of IDs) Account IDs for multipleAccounts scope.
+    *   `scopeAccountType`: (Optional String) "expense" or "income" for accountType scope.
+    *   `description`: (Optional String) Budget description (max 500 characters).
+    *   *Indexes*: `by_user` on `userId`, `by_accountId` on `accountId`, `by_user_active` on `userId` and `softdelete` and `creationTime`, `by_nextDueDate` on `nextDueDate`.
+
+*   **`budget_lines`**: Historical budget execution records (Phase 4.2).
+    *   `budgetId`: (ID referencing `budgets`) Parent budget.
+    *   `periodStart`: (Number) Period start timestamp.
+    *   `periodEnd`: (Number) Period end timestamp.
+    *   `spentAmount`: (Number) Amount spent/earned in period.
+    *   `remainingAmount`: (Number) Amount remaining in period.
+    *   `percentUsed`: (Number) Percentage of budget used.
+    *   `status`: (String) "under_budget", "at_budget", or "over_budget".
+    *   `createdAt`: (Number) Record creation timestamp.
+    *   *Index*: `by_budgetId_periodStart` on `budgetId` and `periodStart`.
 
 *   **`ledger_errors`**: Error tracking for dual-write operations.
     *   `userId`: (ID referencing `users`)
@@ -266,6 +295,26 @@ The database is managed using Convex and includes the following tables:
 ### Projections (`convex/projections.ts`)
 *   **`getProjectedPayments` (query)**: Returns forward-looking items combining installment schedules and recurring transactions within a 4-month horizon for the authenticated user. Optimized for performance with batch processing.
 
+### Transfers (`convex/ledger/transfers.ts`)
+*   **`addTransfer` (mutation)**: Creates account-to-account transfers with cross-currency support and automatic exchange rate handling.
+*   **`updateTransfer` (mutation)**: Updates transfer description (amounts are immutable for accounting integrity).
+*   **`deleteTransfer` (mutation)**: Soft-deletes a transfer with proper audit trail.
+*   **`listTransfers` (query)**: Lists transfers for authenticated user with optional filters (account, date range, amount).
+*   **`getTransferDetails` (query)**: Retrieves detailed information about a specific transfer including exchange rates.
+
+### Budgets (`convex/ledger/budgets.ts`)
+*   **`createBudget` (mutation)**: Creates a new budget with comprehensive validation for scope configuration, account ownership, and amount.
+*   **`updateBudget` (mutation)**: Updates existing budget amount, frequency, or end date (scope configuration is immutable).
+*   **`deleteBudget` (mutation)**: Soft-deletes a budget while preserving historical data.
+
+### Budget Execution (`convex/ledger/budgetExecution.ts`)
+*   **`getBudgetExecution` (query)**: Calculates real-time budget execution by aggregating journal_lines for accounts in budget scope within current period.
+*   **`listBudgets` (query)**: Lists all budgets for authenticated user with current execution status and human-readable scope descriptions.
+
+### Budget Utilities (`convex/ledger/budgetUtils.ts`)
+*   **`calculatePeriodBoundaries`**: Calculates period start and end timestamps for all supported frequencies (daily through yearly) aligned to calendar boundaries in UTC.
+*   **`calculateNextDueDate`**: Determines next period start date for budget rollover calculations.
+
 ### Internal Functions (`convex/internal/`)
 *   **`generatePaymentSchedules` (internal mutation)**: Consolidated function for generating installment payment schedules.
 *   **`deletePaymentSchedulesForExpense` (internal mutation)**: Removes payment schedules for a specific expense.
@@ -355,9 +404,51 @@ The database is managed using Convex and includes the following tables:
 
 ## Recent Updates & Current State
 
+### Phase 4.2: Budget System Implementation (✅ COMPLETED - October 12, 2025)
+
+The application now includes a comprehensive flexible budget system built on the ledger infrastructure. This system provides real-time budget tracking with three flexible scope types and automatic execution calculation from journal entries.
+
+**Budget System Features:**
+- **Three Scope Types**:
+  - `singleAccount`: Budget for one specific account
+  - `multipleAccounts`: Budget for selected accounts (must be same type: expense or income)
+  - `accountType`: Budget for all accounts of a type (expense or income)
+- **Frequency-Based Periods**: Daily, weekly, monthly, quarterly, semestrally, yearly with calendar-aligned boundaries
+- **Real-Time Execution Calculation**: Aggregates journal_lines within current period to calculate spent/remaining amounts
+- **UTC Time Standards**: All period calculations performed in UTC with ISO 8601 week boundaries (Monday start)
+- **Performance Optimized**: Parallel queries for multiple accounts, indexed for efficient period lookups
+- **Comprehensive Validation**: Account ownership, account type eligibility (expense/income only), cross-account type validation
+- **Soft-Delete Support**: Budget deletion preserves historical data, gracefully handles deleted accounts
+- **Status Tracking**: Under budget, at budget (95-105%), over budget (>105%)
+- **Account Breakdown**: Per-account spending breakdown for multi-account budgets
+- **Budget Utilities**: Reusable period calculation functions for all supported frequencies
+
+**Architectural Decisions:**
+- Budget execution calculated from journal_lines (source of truth) rather than pre-aggregated data
+- No carryover between budget periods (resets each period)
+- Scope configuration is immutable after creation (must delete and recreate to change scope)
+- Week boundaries follow ISO 8601 standard (Monday = week start)
+- Quarter boundaries: Q1 (Jan-Mar), Q2 (Apr-Jun), Q3 (Jul-Sep), Q4 (Oct-Dec)
+- Semester boundaries: H1 (Jan-Jun), H2 (Jul-Dec)
+- Budget amounts stored in minor units (base currency) for precision
+
+### Phase 4.1: Transfer Implementation (✅ COMPLETED - October 11, 2025)
+
+The application includes a complete account-to-account transfer system built exclusively on the ledger infrastructure. This is the first major feature leveraging the double-entry foundation established in Phases 1-3.
+
+**Transfer System Features:**
+- Account-to-account transfers with proper double-entry recording (debit source, credit destination)
+- Cross-currency transfer support with user-provided or market exchange rates
+- Comprehensive validation (amount, accounts, exchange rates, user authorization)
+- Transfer history queries with filtering by account, date range, and amount
+- Soft-delete capability with complete audit trail
+- Zero-sum invariant maintenance with automatic residual balancing
+- Performance optimized (< 200ms creation time, < 100ms queries)
+- Complete test coverage (>90%) for all transfer logic
+
 ### Phase 1-3: Double-Entry Accounting Ledger System (✅ COMPLETED - January 8, 2025)
 
-The application now features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables. Successfully deployed to production with 100% migration success rate.
+The application features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables. Successfully deployed to production with 100% migration success rate.
 
 **Production Deployment Results:**
 - 7/7 users migrated successfully (100%)
@@ -410,12 +501,14 @@ The application now features a complete double-entry bookkeeping system with dua
 
 ### Current Implementation Status:
 
-**✅ Completed Features (Phases 1-3):**
+**✅ Completed Features (Phases 1-4.2):**
 - ✅ Double-entry accounting ledger system with production deployment
 - ✅ Complete dual-write synchronization (legacy ↔ ledger)
 - ✅ Historical data migration (100% success rate)
 - ✅ Chart of accounts with automatic creation
 - ✅ Journal entries with zero-sum validation
+- ✅ **Account-to-account transfers with cross-currency support (Phase 4.1)**
+- ✅ **Flexible budget system with three scope types and real-time execution (Phase 4.2)**
 - ✅ Core transaction management (expenses/income)
 - ✅ Recurring transaction automation with ledger integration
 - ✅ Installment payment scheduling
@@ -427,18 +520,24 @@ The application now features a complete double-entry bookkeeping system with dua
 - ✅ Structured error tracking and monitoring foundation
 - ✅ Complete audit trail with user tracking
 
-**🔄 In Progress (Phase 4):**
-- Advanced accounting features leveraging ledger data
-- Financial reports using journal entries
-- Account balance queries
-- Transaction reconciliation tools
+**🔄 In Progress (Phase 4.3-4.4):**
+- 🔄 Phase 4.3: Pre-Aggregation System (IN PLANNING)
+  - Monthly rollups table for performance optimization
+  - Background job for rollup reconciliation
+  - Best-effort synchronous updates on transactions
+  - Home dashboard integration using pre-aggregated data
+- 🔄 Phase 4.4: UI Integration (IN PLANNING)
+  - Budget management UI components
+  - Budget execution display in Home dashboard
+  - Transfer creation and history UI
+  - Home dashboard optimization with rollups
 
-**📋 Planned (Phases 5-8):**
-- Phase 5: Card settlement and credit card statement reconciliation
-- Phase 6: UI migration to ledger data (read from journal entries)
-- Phase 7: Legacy table deprecation
-- Phase 8: Multi-currency support and FX handling
-- Future: Budget tracking, savings goals, investment tracking
+**📋 Planned (Phase 5+):**
+- **Phase 5**: Card settlement and credit card statement reconciliation
+- **Phase 6**: UI migration to ledger data (complete read path from journal entries)
+- **Phase 7**: Legacy table deprecation and cleanup
+- **Phase 8**: Multi-currency support enhancements and FX handling
+- **Future**: Advanced features (savings goals, investment tracking, debt prioritization, financial insights)
 
 ### Production Status
 
@@ -456,10 +555,49 @@ The application now features a complete double-entry bookkeeping system with dua
 
 ### Next Steps
 
-The accounting ledger foundation is complete and production-ready. Next phases will focus on:
-1. Building advanced accounting features on top of the ledger
-2. Migrating UI to read from ledger tables
-3. Enhancing financial reporting with double-entry data
-4. Adding card settlement and reconciliation features
+**Current Focus: Phase 4.3-4.4 (Pre-Aggregation & UI Integration)**
 
-Refer to `planning/accounting.md` for the complete accounting system roadmap and `docs/` for detailed implementation documentation.
+The budget system backend implementation is complete. Next immediate steps:
+
+1. **Pre-Aggregation System** (Phase 4.3):
+   - Design and implement `monthly_rollups` table for performance optimization
+   - Create background cron job for rollup reconciliation and correction
+   - Implement best-effort synchronous rollup updates on transaction mutations
+   - Build query functions for Home dashboard using pre-aggregated data
+   - Add rollup metrics and monitoring
+
+2. **UI Integration** (Phase 4.4):
+   - **Budget Management UI**:
+     - Budget creation form with scope type selector
+     - Budget list view with current execution status
+     - Budget detail/edit view with historical tracking
+     - Budget deletion with confirmation
+   - **Transfer UI**:
+     - Transfer creation form with account selection and currency conversion
+     - Transfer history list with filtering
+     - Transfer detail view
+   - **Home Dashboard Optimization**:
+     - Integrate budget execution cards showing progress bars
+     - Display top spending categories using rollups
+     - Show monthly trends with pre-aggregated data
+     - Optimize queries with indexed rollup lookups
+
+3. **Testing & Documentation**:
+   - Unit tests for rollup calculation logic
+   - Integration tests for budget UI flows
+   - E2E tests for transfer creation
+   - Update API documentation
+
+**Future Phases:**
+- **Phase 5**: Card settlement and credit card statement reconciliation
+- **Phase 6**: UI migration to ledger data (complete read path from journal entries)
+- **Phase 7**: Legacy table deprecation and cleanup
+- **Phase 8**: Multi-currency support enhancements and FX handling
+- **Future**: Advanced features (savings goals, investment tracking, debt prioritization, financial insights)
+
+**Reference Documentation:**
+- `planning/accounting.md`: Complete accounting system roadmap
+- `planning/accountingSteps/Phase4.1-TransferImplementation.md`: Transfer system specifications
+- `planning/accountingSteps/Phase4.2-BudgetSystem.md`: Budget system specifications
+- `docs/PHASE-4.2-TEST-REPORT.md`: Budget system test results
+- `docs/`: Implementation documentation and test reports

@@ -119,6 +119,7 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_type", ["userId", "accountType"])
+    .index("by_user_type_active", ["userId", "accountType", "softdelete"])
     .index("by_parentAccountId", ["parentAccountId"]),
 
   journal_entries: defineTable({
@@ -197,7 +198,7 @@ export default defineSchema({
 
   budgets: defineTable({
     userId: v.id("users"),
-    accountId: v.id("accounts"),
+    accountId: v.optional(v.id("accounts")), // Required only for singleAccount scope
     amount: v.number(), // integer in base currency
     frequency: frequencyValidator,
     nextDueDate: v.number(),
@@ -206,10 +207,14 @@ export default defineSchema({
     softdelete: v.boolean(),
     deletedAt: v.optional(v.number()),
     scopeType: scopeTypeValidator,
-    scopeRefs: v.optional(v.array(v.id("accounts"))),
+    scopeRefs: v.optional(v.array(v.id("accounts"))), // Required for multipleAccounts scope
+    scopeAccountType: v.optional(v.union(v.literal("expense"), v.literal("income"))), // Required for accountType scope
+    description: v.optional(v.string()), // Optional budget description (max 500 chars)
   })
     .index("by_user", ["userId"])
-    .index("by_accountId", ["accountId"]),
+    .index("by_accountId", ["accountId"])
+    .index("by_user_active", ["userId", "softdelete", "creationTime"])
+    .index("by_nextDueDate", ["nextDueDate"]),
 
   budget_lines: defineTable({
     budgetId: v.id("budgets"),
