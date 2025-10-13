@@ -741,6 +741,8 @@ export const updatePaymentTypes = mutation({
                   userId,
                   closingDay: type.closingDay!,
                   dueDate: type.dueDay!,
+                  baseCurrency: "ARS", // Default to ARS for existing cards
+                  createdAt: Date.now(),
                   softdelete: false,
                 });
               } else if (type.isCredit && existingCard) {
@@ -809,6 +811,8 @@ export const updatePaymentTypes = mutation({
                     userId,
                     closingDay: type.closingDay,
                     dueDate: type.dueDay,
+                    baseCurrency: "ARS", // Default to ARS for existing cards
+                    createdAt: Date.now(),
                     softdelete: false,
                   });
                 }
@@ -859,6 +863,8 @@ export const updatePaymentTypes = mutation({
                 userId,
                 closingDay: type.closingDay,
                 dueDate: type.dueDay,
+                baseCurrency: "ARS", // Default to ARS for existing cards
+                createdAt: Date.now(),
                 softdelete: false,
               });
             }

@@ -34,16 +34,18 @@ To optimize the agent's actions:
 
 **Testing Discipline Standards:**
 - Unit test coverage >85% (MANDATORY)
-- Integration test requirements for all API calls
+- Integration test requirements for all API calls (MANDATORY - prevents quality regression)
 - Performance test benchmarks for queries
 - Edge case test coverage for error states
 - Manual validation steps from PRD
+- Independent integration test validation (not dependent on implementation completion)
 
 **Testing Validation:**
 - [ ] All unit tests pass
 - [ ] Integration tests cover API flows
 - [ ] Performance benchmarks meet targets
 - [ ] Edge cases handled gracefully
+- [ ] Integration tests execute independently of implementation completion
 
 ## 🔗 Convex Function Reference Standards
 
@@ -60,6 +62,9 @@ const result = await ctx.runQuery(api.ledger.budgetHistory.getBudgetHistory, {..
 - [ ] All function calls use correct `api.` vs `internal.` patterns
 - [ ] No function reference errors in implementation
 - [ ] Linting rules catch function reference misuse
+- [ ] Schema integration validation completed before implementation
+- [ ] API export verification completed before function registration
+- [ ] Type safety enforcement with zero tolerance for errors
 
 ## 🚦 Quality Gates
 
@@ -73,6 +78,13 @@ const result = await ctx.runQuery(api.ledger.budgetHistory.getBudgetHistory, {..
 - P1: Address before deployment
 - P2/P3: Document and track
 
+**Process Improvement Integration:**
+- **Schema Integration Validation**: P0 blocker - prevents complete system non-functionality
+- **API Export Verification**: P0 blocker - prevents functions from being inaccessible
+- **Type Safety Enforcement**: P0 blocker - prevents compilation failures
+- **Integration Testing Requirements**: P1 priority - prevents quality regression
+- **Quality Gate Consistency**: P1 priority - ensures systematic process application
+
 ## 📝 Execution Plan Deliverable
 
 Before any code execution, output your proposed plan using the agent's planning format (e.g., `<suggest_plan/>` or numbered steps in a `<lov-thinking>` block). The plan must confirm:
@@ -81,4 +93,5 @@ Before any code execution, output your proposed plan using the agent's planning 
 2.  **File List:** A comprehensive list of **all files** that will be created or modified.
 3.  **Testing Strategy:** Comprehensive testing plan including unit tests, integration tests, and performance benchmarks.
 4.  **Function Reference Validation:** Plan for validating correct Convex function calling patterns.
-5.  **Validation Strategy:** The specific steps for verifying the implementation (e.g., "Run `npm run test`, manually check responsiveness on mobile, verify API calls using `read-network-requests`").
+5.  **Process Improvement Integration:** Plan for schema integration validation, API export verification, and type safety enforcement.
+6.  **Validation Strategy:** The specific steps for verifying the implementation (e.g., "Run `npm run test`, manually check responsiveness on mobile, verify API calls using `read-network-requests`").

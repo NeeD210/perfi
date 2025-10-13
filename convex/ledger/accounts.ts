@@ -75,6 +75,8 @@ export const createCardAccount = internalMutation({
       userId,
       closingDay,
       dueDate,
+      baseCurrency: "ARS", // Default to ARS for existing cards
+      createdAt: Date.now(),
       softdelete: false,
     });
 

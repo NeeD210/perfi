@@ -14,4 +14,14 @@ crons.cron("budgetRollover", "5 0 * * *", internal.ledger.budgetLines.processBud
 // Ensures monthly rollups are consistent with journal_lines data through drift detection
 crons.cron("rollupReconciliation", "0 2 * * *", internal.ledger.rollups.reconcileMonthlyRollups);
 
+// Card statement calculation - daily at 01:00 UTC
+// Calculates statements for cards with closing day = today
+crons.cron("cardStatementCalculation", "0 1 * * *", 
+  internal.ledger.cardStatements.processClosingStatements, {});
+
+// Card settlement posting - daily at 03:00 UTC  
+// Posts settlements for statements with due date = today
+crons.cron("cardSettlementPosting", "0 3 * * *",
+  internal.ledger.cardStatements.processSettlements, {});
+
 export default crons; 

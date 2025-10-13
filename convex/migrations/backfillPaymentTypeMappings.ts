@@ -121,6 +121,8 @@ export const backfillPaymentTypeMappings = internalMutation({
             userId: args.userId,
             closingDay: pt.closingDay,
             dueDate: pt.dueDay,
+            baseCurrency: "ARS", // Default to ARS for existing cards
+            createdAt: Date.now(),
             softdelete: false,
           });
           

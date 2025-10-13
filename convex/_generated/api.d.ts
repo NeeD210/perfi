@@ -29,6 +29,7 @@ import type * as ledger_budgetHistory from "../ledger/budgetHistory.js";
 import type * as ledger_budgetLines from "../ledger/budgetLines.js";
 import type * as ledger_budgetUtils from "../ledger/budgetUtils.js";
 import type * as ledger_budgets from "../ledger/budgets.js";
+import type * as ledger_cardStatements from "../ledger/cardStatements.js";
 import type * as ledger_dualWriteConfig from "../ledger/dualWriteConfig.js";
 import type * as ledger_dualWriteUtils from "../ledger/dualWriteUtils.js";
 import type * as ledger_errorTracking from "../ledger/errorTracking.js";
@@ -53,6 +54,7 @@ import type * as migrations_backfillPaymentTypeMappings from "../migrations/back
 import type * as migrations_bulkPhase2Migration from "../migrations/bulkPhase2Migration.js";
 import type * as migrations_category from "../migrations/category.js";
 import type * as migrations_expenseCategory from "../migrations/expenseCategory.js";
+import type * as migrations_fixCardFields from "../migrations/fixCardFields.js";
 import type * as migrations_index from "../migrations/index.js";
 import type * as migrations_installmentBackfill from "../migrations/installmentBackfill.js";
 import type * as migrations_phase2Runner from "../migrations/phase2Runner.js";
@@ -95,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   "ledger/budgetLines": typeof ledger_budgetLines;
   "ledger/budgetUtils": typeof ledger_budgetUtils;
   "ledger/budgets": typeof ledger_budgets;
+  "ledger/cardStatements": typeof ledger_cardStatements;
   "ledger/dualWriteConfig": typeof ledger_dualWriteConfig;
   "ledger/dualWriteUtils": typeof ledger_dualWriteUtils;
   "ledger/errorTracking": typeof ledger_errorTracking;
@@ -119,6 +122,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/bulkPhase2Migration": typeof migrations_bulkPhase2Migration;
   "migrations/category": typeof migrations_category;
   "migrations/expenseCategory": typeof migrations_expenseCategory;
+  "migrations/fixCardFields": typeof migrations_fixCardFields;
   "migrations/index": typeof migrations_index;
   "migrations/installmentBackfill": typeof migrations_installmentBackfill;
   "migrations/phase2Runner": typeof migrations_phase2Runner;

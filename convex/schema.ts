@@ -180,6 +180,8 @@ export default defineSchema({
     userId: v.id("users"),
     closingDay: v.number(), // 1-31
     dueDate: v.number(), // 1-31
+    baseCurrency: v.optional(v.string()), // ISO 4217 currency code for statement calculations (optional for existing cards)
+    createdAt: v.optional(v.number()), // epoch milliseconds (card creation date) (optional for existing cards)
     softdelete: v.boolean(),
     deletedAt: v.optional(v.number()),
   })
@@ -346,4 +348,31 @@ export default defineSchema({
     .index("by_user_account_month", ["userId", "accountId", "month"]) // Budget execution queries
     .index("by_month", ["month"]) // System-wide reconciliation jobs
     .index("by_last_reconciled", ["lastReconciled"]), // Find stale rollups for reconciliation
+
+  // Card statements for automated billing
+  card_statements: defineTable({
+    accountId: v.id("accounts"), // FK to card liability account
+    userId: v.id("users"), // FK to user who owns the card
+    periodStart: v.number(), // epoch milliseconds (start of billing period)
+    periodEnd: v.number(), // epoch milliseconds (end of billing period)
+    closingDate: v.number(), // epoch milliseconds (statement closing date)
+    dueDate: v.number(), // epoch milliseconds (payment due date)
+    totalAmount: v.number(), // signed integer in minor units (statement total)
+    currencyCode: v.string(), // ISO 4217 currency code (e.g., "ARS", "USD")
+    exchangeRate: v.optional(v.number()), // Exchange rate used for conversion (user-modifiable)
+    exchangeRateId: v.optional(v.id("exchange_rates")), // Reference to official rate
+    status: v.union(
+      v.literal("pending"), // calculated but not yet settled
+      v.literal("posted"), // settlement entry created
+      v.literal("paid") // payment received (future enhancement)
+    ),
+    settlementEntryId: v.optional(v.id("journal_entries")), // FK to settlement entry
+    idempotencyKey: v.string(), // prevents duplicate statements
+    createdAt: v.number(), // epoch milliseconds
+    updatedAt: v.number(), // epoch milliseconds
+  })
+    .index("by_accountId_closingDate", ["accountId", "closingDate"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_dueDate_status", ["dueDate", "status"])
+    .index("by_idempotencyKey", ["idempotencyKey"]),
 });

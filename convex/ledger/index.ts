@@ -65,4 +65,7 @@ export { generatePeriodBoundariesInRange } from "./budgetUtils";
 export * from "./rollups";
 export * from "./monthlySummary";
 
+// Export card statements functions
+export * from "./cardStatements";
+
 export * from "./validators";

@@ -160,6 +160,8 @@ export const seedAccountsFromLegacyData = internalMutation({
             userId: args.userId,
             closingDay: paymentType.closingDay,
             dueDate: paymentType.dueDay,
+            baseCurrency: "ARS", // Default to ARS for existing cards
+            createdAt: Date.now(),
             softdelete: false,
           });
         }

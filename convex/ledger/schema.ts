@@ -49,7 +49,8 @@ export const ledgerSchema = {
   })
     .index("by_user_date", ["userId", "date"])
     .index("by_user_status_date", ["userId", "status", "date"])
-    .index("by_sourceType_sourceId", ["sourceType", "sourceId"]),
+    .index("by_sourceType_sourceId", ["sourceType", "sourceId"])
+    .index("by_idempotencyKey", ["idempotencyKey"]),
 
   // Debit/credit lines
   journal_lines: defineTable({
@@ -88,6 +89,8 @@ export const ledgerSchema = {
     userId: v.id("users"),
     closingDay: v.number(), // 1-31
     dueDate: v.number(), // 1-31
+    baseCurrency: v.string(), // ISO 4217 currency code for statement calculations
+    createdAt: v.number(), // epoch milliseconds (card creation date)
     softdelete: v.boolean(),
     deletedAt: v.optional(v.number()),
   })
@@ -168,4 +171,50 @@ export const ledgerSchema = {
   })
     .index("by_recurringId", ["recurringId"])
     .index("by_user", ["userId"]),
+
+  // Monthly rollups for performance optimization
+  monthly_rollups: defineTable({
+    id: v.id("monthly_rollups"),
+    userId: v.id("users"),
+    accountId: v.id("accounts"),
+    month: v.number(), // epoch ms of month start
+    totalDebits: v.number(),
+    totalCredits: v.number(),
+    netAmount: v.number(),
+    transactionCount: v.number(),
+    lastUpdated: v.number(),
+    lastReconciled: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_user_account_month", ["userId", "accountId", "month"])
+    .index("by_account_month", ["accountId", "month"])
+    .index("by_user_month", ["userId", "month"]),
+
+  // Card statements for automated billing
+  card_statements: defineTable({
+    id: v.id("card_statements"),
+    accountId: v.id("accounts"), // FK to card liability account
+    userId: v.id("users"), // FK to user who owns the card
+    periodStart: v.number(), // epoch milliseconds (start of billing period)
+    periodEnd: v.number(), // epoch milliseconds (end of billing period)
+    closingDate: v.number(), // epoch milliseconds (statement closing date)
+    dueDate: v.number(), // epoch milliseconds (payment due date)
+    totalAmount: v.number(), // signed integer in minor units (statement total)
+    currencyCode: v.string(), // ISO 4217 currency code (e.g., "ARS", "USD")
+    exchangeRate: v.optional(v.number()), // Exchange rate used for conversion (user-modifiable)
+    exchangeRateId: v.optional(v.id("exchange_rates")), // Reference to official rate
+    status: v.union(
+      v.literal("pending"), // calculated but not yet settled
+      v.literal("posted"), // settlement entry created
+      v.literal("paid") // payment received (future enhancement)
+    ),
+    settlementEntryId: v.optional(v.id("journal_entries")), // FK to settlement entry
+    idempotencyKey: v.string(), // prevents duplicate statements
+    createdAt: v.number(), // epoch milliseconds
+    updatedAt: v.number(), // epoch milliseconds
+  })
+    .index("by_accountId_closingDate", ["accountId", "closingDate"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_dueDate_status", ["dueDate", "status"])
+    .index("by_idempotencyKey", ["idempotencyKey"]),
 };

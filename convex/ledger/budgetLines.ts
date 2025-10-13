@@ -84,7 +84,7 @@ export const createBudgetLine = internalMutation({
     if (existingLine) {
       // Line already exists, return existing ID
       console.log(`Budget line already exists for budget ${args.budgetId} period ${args.periodStart}`);
-      return { budgetLineId: existingLine._id, status: "already_exists" };
+      return { budgetLineId: existingLine._id, status: "already_exists" as const };
     }
     
     // 3. Validate period boundaries
@@ -116,8 +116,7 @@ export const createBudgetLine = internalMutation({
     
     console.log(`Created budget line ${budgetLineId} for budget ${args.budgetId}: ${args.status}, ${args.percentUsed}% used`);
     
-    const result: { budgetLineId: Id<"budget_lines">; status: "success" | "already_exists" } = { budgetLineId, status: "success" };
-    return result;
+    return { budgetLineId, status: "success" as const };
   },
 });
 
