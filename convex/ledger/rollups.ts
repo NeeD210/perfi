@@ -13,7 +13,7 @@
  * - Eventual consistency with drift detection
  */
 
-import { internalMutation, internalQuery, internalAction } from "../_generated/server";
+import { internalMutation, internalQuery, internalAction, ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
@@ -538,7 +538,9 @@ export const reconcileMonthlyRollups = internalAction({
       }
       
       const duration = Date.now() - startTime;
-      console.log(`[Rollup Reconciliation] Job completed: ${processed} accounts processed, ${updated} updated, ${created} created, ${driftDetected} drift detected, ${errors} errors, ${duration}ms`);
+      
+      // ✅ Add success logging
+      console.log(`[Rollup Reconciliation] SUCCESS: ${processed} accounts processed, ${updated} updated, ${created} created, ${driftDetected} drift detected, ${errors} errors, ${duration}ms`);
       
       return {
         processed,
@@ -549,7 +551,8 @@ export const reconcileMonthlyRollups = internalAction({
         duration,
       };
     } catch (error) {
-      console.error(`[Rollup Reconciliation] Job failed: ${error}`);
+      // ✅ Add error logging
+      console.error(`[Rollup Reconciliation] CRITICAL ERROR:`, error);
       const duration = Date.now() - startTime;
       return {
         processed,
@@ -567,9 +570,14 @@ export const reconcileMonthlyRollups = internalAction({
  * Helper function to reconcile rollups for a single account
  */
 async function reconcileAccountRollups(
-  ctx: any, 
+  ctx: ActionCtx, 
   account: { _id: Id<"accounts">; userId: Id<"users">; description: string; accountType: string; softdelete: boolean }
 ) {
+  // ✅ Add defensive programming for context validation
+  if (!ctx) {
+    throw new Error(`Invalid context: missing context for account ${account._id}`);
+  }
+  
   let updated = 0;
   let created = 0;
   let driftDetected = 0;
@@ -577,13 +585,10 @@ async function reconcileAccountRollups(
   // 1. Get last 12 months of rollups for this account
   const twelveMonthsAgo = getMonthStart(Date.now() - (365 * 24 * 60 * 60 * 1000));
   
-  const existingRollups = await ctx.db
-    .query("monthly_rollups")
-    .withIndex("by_account_month", (q: any) =>
-      q.eq("accountId", account._id)
-       .gte("month", twelveMonthsAgo)
-    )
-    .collect();
+  const existingRollups = await ctx.runQuery(internal.ledger.rollups.getRollupsByAccountMonth, {
+    accountId: account._id,
+    startMonth: twelveMonthsAgo
+  });
   
   // 2. Create map of existing rollups by month
   const rollupMap = new Map();
@@ -600,14 +605,11 @@ async function reconcileAccountRollups(
     const monthStart = workingMonth;
     const monthEnd = getMonthEnd(workingMonth);
     
-    const lines = await ctx.db
-      .query("journal_lines")
-      .withIndex("by_accountId_date", (q: any) =>
-        q.eq("accountId", account._id)
-         .gte("entryDate", monthStart)
-         .lte("entryDate", monthEnd)
-      )
-      .collect();
+    const lines = await ctx.runQuery(internal.ledger.rollups.getJournalLinesByAccountDateRange, {
+      accountId: account._id,
+      startDate: monthStart,
+      endDate: monthEnd
+    });
     
     const calculatedRollup = {
       totalDebits: lines.reduce((sum: number, line: Doc<"journal_lines">) => sum + (line.direction === "debit" ? line.amountBaseCurrency : 0), 0),
@@ -632,18 +634,17 @@ async function reconcileAccountRollups(
         }
         
         // Update rollup directly
-        await ctx.db.patch(existingRollup._id, {
+        await ctx.runMutation(internal.ledger.rollups.updateRollup, {
+          rollupId: existingRollup._id,
           totalDebits: calculatedRollup.totalDebits,
           totalCredits: calculatedRollup.totalCredits,
           netAmount: calculatedRollup.netAmount,
           transactionCount: calculatedRollup.transactionCount,
-          lastUpdated: Date.now(),
-          lastReconciled: Date.now(),
         });
         updated++;
       } else {
         // Create missing rollup directly
-        await ctx.db.insert("monthly_rollups", {
+        await ctx.runMutation(internal.ledger.rollups.createRollup, {
           userId: account.userId,
           accountId: account._id,
           month: workingMonth,
@@ -651,9 +652,6 @@ async function reconcileAccountRollups(
           totalCredits: calculatedRollup.totalCredits,
           netAmount: calculatedRollup.netAmount,
           transactionCount: calculatedRollup.transactionCount,
-          lastUpdated: Date.now(),
-          lastReconciled: Date.now(),
-          createdAt: Date.now(),
         });
         created++;
       }
@@ -783,5 +781,107 @@ export const getBudgetExecutionRollups = internalQuery({
       netAmount: rollup.netAmount,
       transactionCount: rollup.transactionCount,
     }));
+  },
+});
+
+// Helper query for getting rollups by account and month range
+export const getRollupsByAccountMonth = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    startMonth: v.number(),
+  },
+  returns: v.array(v.object({
+    _id: v.id("monthly_rollups"),
+    accountId: v.id("accounts"),
+    month: v.number(),
+    totalDebits: v.number(),
+    totalCredits: v.number(),
+    netAmount: v.number(),
+    transactionCount: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("monthly_rollups")
+      .withIndex("by_account_month", (q: any) =>
+        q.eq("accountId", args.accountId)
+         .gte("month", args.startMonth)
+      )
+      .collect();
+  },
+});
+
+// Helper query for getting journal lines by account and date range
+export const getJournalLinesByAccountDateRange = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    startDate: v.number(),
+    endDate: v.number(),
+  },
+  returns: v.array(v.object({
+    _id: v.id("journal_lines"),
+    accountId: v.id("accounts"),
+    entryDate: v.number(),
+    direction: v.string(),
+    amountBaseCurrency: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("journal_lines")
+      .withIndex("by_accountId_date", (q: any) =>
+        q.eq("accountId", args.accountId)
+         .gte("entryDate", args.startDate)
+         .lte("entryDate", args.endDate)
+      )
+      .collect();
+  },
+});
+
+// Helper mutation for updating rollup
+export const updateRollup = internalMutation({
+  args: {
+    rollupId: v.id("monthly_rollups"),
+    totalDebits: v.number(),
+    totalCredits: v.number(),
+    netAmount: v.number(),
+    transactionCount: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.rollupId, {
+      totalDebits: args.totalDebits,
+      totalCredits: args.totalCredits,
+      netAmount: args.netAmount,
+      transactionCount: args.transactionCount,
+      lastUpdated: Date.now(),
+      lastReconciled: Date.now(),
+    });
+  },
+});
+
+// Helper mutation for creating rollup
+export const createRollup = internalMutation({
+  args: {
+    userId: v.id("users"),
+    accountId: v.id("accounts"),
+    month: v.number(),
+    totalDebits: v.number(),
+    totalCredits: v.number(),
+    netAmount: v.number(),
+    transactionCount: v.number(),
+  },
+  returns: v.id("monthly_rollups"),
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("monthly_rollups", {
+      userId: args.userId,
+      accountId: args.accountId,
+      month: args.month,
+      totalDebits: args.totalDebits,
+      totalCredits: args.totalCredits,
+      netAmount: args.netAmount,
+      transactionCount: args.transactionCount,
+      lastUpdated: Date.now(),
+      lastReconciled: Date.now(),
+      createdAt: Date.now(),
+    });
   },
 });
