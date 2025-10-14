@@ -33,10 +33,11 @@ jobs:
       env:
         CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
     
-    - name: Deploy to Vercel
-      run: |
-        npm install -g vercel
-        vercel --token ${{ secrets.VERCEL_TOKEN }} --prod
-      env:
-        VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-        VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    # Vercel deployment is handled automatically via GitHub integration
+    # - name: Deploy to Vercel
+    #   run: |
+    #     npm install -g vercel
+    #     vercel --token ${{ secrets.VERCEL_TOKEN }} --prod
+    #   env:
+    #     VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+    #     VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
