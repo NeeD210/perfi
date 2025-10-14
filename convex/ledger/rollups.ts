@@ -798,6 +798,12 @@ export const getRollupsByAccountMonth = internalQuery({
     totalCredits: v.number(),
     netAmount: v.number(),
     transactionCount: v.number(),
+    // Include all fields that are actually returned
+    _creationTime: v.number(),
+    createdAt: v.number(),
+    lastReconciled: v.number(),
+    lastUpdated: v.number(),
+    userId: v.id("users"),
   })),
   handler: async (ctx, args) => {
     return await ctx.db
@@ -823,6 +829,14 @@ export const getJournalLinesByAccountDateRange = internalQuery({
     entryDate: v.number(),
     direction: v.string(),
     amountBaseCurrency: v.number(),
+    // Include all fields that are actually returned
+    _creationTime: v.number(),
+    amount: v.number(),
+    currencyCode: v.string(),
+    journalEntryId: v.id("journal_entries"),
+    userId: v.id("users"),
+    installmentNumber: v.optional(v.number()),
+    totalInstallments: v.optional(v.number()),
   })),
   handler: async (ctx, args) => {
     return await ctx.db

@@ -45,7 +45,124 @@ This document provides an overview of the PerFi (Personal Finance) application, 
 
 ## Core Codebase Guidelines & Non-Functional Requirements (NFRs)
 
-This section codifies the architectural standards, constraints, and best practices learned from Phase 4.4 implementation, Phase 5 audit findings, and comprehensive process improvement analysis. These guidelines serve as the single source of truth for all future development phases.
+This section codifies the architectural standards, constraints, and best practices learned from Phase 4.4 implementation, Phase 5 audit findings, comprehensive process improvement analysis, and critical error reflections (including the rollup reconciliation failure analysis). These guidelines serve as the single source of truth for all future development phases.
+
+### Type Safety and Context Validation Standards (P0 - CRITICAL)
+
+**Rationale**: The critical rollup reconciliation error (139 accounts, 100% failure rate) was caused by undefined context objects and lack of type safety. These standards prevent similar runtime errors.
+
+#### 1. Context Object Typing (MANDATORY)
+
+All Convex function context objects MUST be properly typed - never use `any`:
+
+```typescript
+// ❌ WRONG - Masks undefined context errors
+async function processData(ctx: any, data: DataType) {
+  const result = await ctx.db.query("table")... // Runtime error if ctx.db undefined
+}
+
+// ✅ CORRECT - Proper type safety
+import { ActionCtx, QueryCtx, MutationCtx } from "../_generated/server";
+
+async function processData(ctx: ActionCtx, data: DataType) {
+  // Type-safe context usage
+  const result = await ctx.runQuery(internal.module.query, {...});
+}
+```
+
+**Rules:**
+- Use `ActionCtx` for actions
+- Use `QueryCtx` for queries  
+- Use `MutationCtx` for mutations
+- Never use `any` for context parameters
+- Import types from `_generated/server`
+
+#### 2. Defensive Context Validation (MANDATORY)
+
+All critical functions MUST validate context objects before use:
+
+```typescript
+// ✅ CORRECT - Defensive programming
+async function reconcileAccountRollups(ctx: ActionCtx, account: Account) {
+  // Validate context before use
+  if (!ctx) {
+    throw new Error(`Invalid context: missing context for account ${account._id}`);
+  }
+  
+  // Safe to use context
+  const rollups = await ctx.runQuery(internal.ledger.rollups.getRollupsByAccountMonth, {
+    accountId: account._id,
+    startMonth: twelveMonthsAgo
+  });
+}
+```
+
+**Rules:**
+- Validate context objects before first use
+- Provide descriptive error messages with context
+- Fail fast with clear error messages
+- Never assume context is valid
+
+#### 3. Defensive Programming Patterns (MANDATORY)
+
+All functions handling data MUST validate inputs and handle edge cases:
+
+```typescript
+// ❌ WRONG - No validation
+function processData(data: any) {
+  return data.items.map(item => item.value); // Runtime error if data.items undefined
+}
+
+// ✅ CORRECT - Defensive programming
+function processData(data: any) {
+  if (!data || !Array.isArray(data.items)) {
+    throw new Error("Invalid data: expected object with items array");
+  }
+  return data.items.map(item => item?.value || 0);
+}
+```
+
+**Rules:**
+- Validate all function parameters
+- Check for null/undefined before property access
+- Use optional chaining (`?.`) for potentially undefined properties
+- Provide default values for optional data
+- Include descriptive error messages
+
+#### 4. Runtime Safety Checks (MANDATORY)
+
+All data access MUST include null/undefined checks:
+
+```typescript
+// ✅ CORRECT - Runtime safety
+async function getRollupData(ctx: QueryCtx, accountId: Id<"accounts">) {
+  const account = await ctx.db.get(accountId);
+  
+  // Check if account exists
+  if (!account) {
+    throw new Error(`Account not found: ${accountId}`);
+  }
+  
+  // Safe to access account properties
+  const rollups = await ctx.db
+    .query("monthly_rollups")
+    .withIndex("by_account", q => q.eq("accountId", account._id))
+    .collect();
+    
+  // Handle empty results
+  if (!rollups || rollups.length === 0) {
+    return { account, rollups: [], hasData: false };
+  }
+  
+  return { account, rollups, hasData: true };
+}
+```
+
+**Rules:**
+- Always check database query results for null/undefined
+- Handle empty result sets explicitly
+- Validate array access before iteration
+- Return structured results with clear status flags
 
 ### Critical System Testing Standards
 

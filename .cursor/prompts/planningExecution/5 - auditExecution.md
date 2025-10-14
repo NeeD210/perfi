@@ -34,9 +34,13 @@ Your audit must proceed in three systematic steps, utilizing available debugging
 * **Goal:** Ensure the code is clean, maintainable, and performs well.
 * **Methodology:**
     1.  **Code Structure Audit:** Review new and modified files (e.g., component modularity, function size, correct use of TypeScript types).
-    2.  **Design System Audit:** Verify all styling utilizes semantic tokens defined in `index.css` or `tailwind.config.ts`. Check for explicit, non-compliant styles (e.g., `bg-white`, `text-black`).
-    3.  **Responsiveness Audit:** Manually check the UI at mobile, tablet, and desktop viewports to confirm the responsive implementation specified in the PRD.
-* **Audit Criteria:** List the top 3-5 critical non-functional criteria (e.g., "Function size must be < 50 lines," "All errors must be logged to console," "Must use object format for `useQuery`") that you will specifically check.
+    2.  **Context Validation Audit:** Verify all framework context objects (ActionCtx, QueryCtx, etc.) are properly typed and validated.
+    3.  **Defensive Programming Audit:** Check that all critical functions include parameter validation and error handling.
+    4.  **Type Safety Audit:** Verify no `any` types in critical functions, proper TypeScript typing throughout.
+    5.  **Runtime Safety Audit:** Ensure null/undefined checks and proper error handling for all data access.
+    6.  **Design System Audit:** Verify all styling utilizes semantic tokens defined in `index.css` or `tailwind.config.ts`. Check for explicit, non-compliant styles (e.g., `bg-white`, `text-black`).
+    7.  **Responsiveness Audit:** Manually check the UI at mobile, tablet, and desktop viewports to confirm the responsive implementation specified in the PRD.
+* **Audit Criteria:** List the top 3-5 critical non-functional criteria (e.g., "Function size must be < 50 lines," "All errors must be logged to console," "Must use object format for `useQuery`," "Context objects must be properly typed and validated," "Defensive programming patterns must be implemented") that you will specifically check.
 
 ### **Step 3: Quality Regression Prevention**
 
@@ -59,6 +63,9 @@ Your audit must proceed in three systematic steps, utilizing available debugging
 - [ ] Schema integration validation completed (P0 blocker)
 - [ ] API export verification completed (P0 blocker)
 - [ ] Type safety enforcement completed (P0 blocker)
+- [ ] Context validation implemented for all framework context objects (P0 blocker)
+- [ ] Defensive programming patterns implemented for all critical functions (P0 blocker)
+- [ ] Runtime safety checks implemented for undefined/null scenarios (P0 blocker)
 - [ ] Integration testing requirements met (P1 priority)
 
 ### **Step 4: Strategic Process Assessment**
@@ -82,6 +89,9 @@ Your audit must proceed in three systematic steps, utilizing available debugging
 - Schema integration validation enforced (P0)
 - API export verification enforced (P0)
 - Type safety enforcement maintained (P0)
+- Context validation requirements enforced (P0)
+- Defensive programming standards enforced (P0)
+- Runtime safety checks enforced (P0)
 - Integration testing requirements met (P1)
 
 ### **Step 5: Bug and Non-Compliance Report Generation**

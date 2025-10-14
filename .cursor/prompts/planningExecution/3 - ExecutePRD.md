@@ -37,6 +37,9 @@ To optimize the agent's actions:
 - Integration test requirements for all API calls (MANDATORY - prevents quality regression)
 - Performance test benchmarks for queries
 - Edge case test coverage for error states
+- Context validation test coverage (MANDATORY - prevents runtime errors)
+- Defensive programming test scenarios (MANDATORY - validates error handling)
+- Runtime safety test coverage (MANDATORY - prevents undefined/null errors)
 - Manual validation steps from PRD
 - Independent integration test validation (not dependent on implementation completion)
 
@@ -45,6 +48,9 @@ To optimize the agent's actions:
 - [ ] Integration tests cover API flows
 - [ ] Performance benchmarks meet targets
 - [ ] Edge cases handled gracefully
+- [ ] Context validation tests pass (MANDATORY)
+- [ ] Defensive programming tests pass (MANDATORY)
+- [ ] Runtime safety tests pass (MANDATORY)
 - [ ] Integration tests execute independently of implementation completion
 
 ## 🔗 Convex Function Reference Standards
@@ -58,6 +64,38 @@ const result = await ctx.runQuery(internal.ledger.budgetHistory.getBudgetHistory
 const result = await ctx.runQuery(api.ledger.budgetHistory.getBudgetHistory, {...});
 ```
 
+**Context Validation Standards (MANDATORY):**
+```typescript
+// ❌ WRONG (causes runtime error)
+async function reconcileAccountRollups(ctx: any, account: Account) {
+  const rollups = await ctx.db.query("monthly_rollups")... // ctx.db undefined
+}
+
+// ✅ CORRECT
+async function reconcileAccountRollups(ctx: ActionCtx, account: Account) {
+  if (!ctx || !ctx.db) {
+    throw new Error(`Invalid context: missing database connection for account ${account._id}`);
+  }
+  const rollups = await ctx.runQuery(internal.ledger.rollups.getRollupsByAccountMonth, {...});
+}
+```
+
+**Defensive Programming Standards (MANDATORY):**
+```typescript
+// ❌ WRONG (no validation)
+function processData(data: any) {
+  return data.items.map(item => item.value); // Runtime error if data.items undefined
+}
+
+// ✅ CORRECT (defensive programming)
+function processData(data: any) {
+  if (!data || !Array.isArray(data.items)) {
+    throw new Error("Invalid data: expected object with items array");
+  }
+  return data.items.map(item => item?.value || 0);
+}
+```
+
 **Validation Checklist:**
 - [ ] All function calls use correct `api.` vs `internal.` patterns
 - [ ] No function reference errors in implementation
@@ -65,6 +103,9 @@ const result = await ctx.runQuery(api.ledger.budgetHistory.getBudgetHistory, {..
 - [ ] Schema integration validation completed before implementation
 - [ ] API export verification completed before function registration
 - [ ] Type safety enforcement with zero tolerance for errors
+- [ ] Context validation implemented for all framework context objects (MANDATORY)
+- [ ] Defensive programming patterns implemented for all critical functions (MANDATORY)
+- [ ] Runtime safety checks implemented for undefined/null scenarios (MANDATORY)
 
 ## 🚦 Quality Gates
 
@@ -82,6 +123,9 @@ const result = await ctx.runQuery(api.ledger.budgetHistory.getBudgetHistory, {..
 - **Schema Integration Validation**: P0 blocker - prevents complete system non-functionality
 - **API Export Verification**: P0 blocker - prevents functions from being inaccessible
 - **Type Safety Enforcement**: P0 blocker - prevents compilation failures
+- **Context Validation Requirements**: P0 blocker - prevents runtime context errors
+- **Defensive Programming Standards**: P0 blocker - prevents runtime parameter errors
+- **Runtime Safety Checks**: P0 blocker - prevents undefined/null runtime errors
 - **Integration Testing Requirements**: P1 priority - prevents quality regression
 - **Quality Gate Consistency**: P1 priority - ensures systematic process application
 
