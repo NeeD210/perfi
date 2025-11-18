@@ -336,3 +336,49 @@ export const backfillRecurringLinesCurrencyCode = internalMutation({
     );
   },
 });
+
+export const backfillCardStatementsForUser = internalAction({
+  args: {
+    userId: v.id("users"),
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+    cardAccountId: v.optional(v.id("accounts")),
+    dryRun: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    processedCards: v.number(),
+    attemptedStatements: v.number(),
+    successful: v.number(),
+    skipped: v.number(),
+    errors: v.number(),
+    durationMs: v.number(),
+  }),
+  handler: async (ctx, args): Promise<{ processedCards: number; attemptedStatements: number; successful: number; skipped: number; errors: number; durationMs: number; }> => {
+    return await ctx.runAction(
+      internal.migrations.cardStatementsBackfill.backfillCardStatementsForUser,
+      args
+    );
+  },
+});
+
+export const backfillAllCardStatements = internalAction({
+  args: {
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    totalCards: v.number(),
+    attemptedStatements: v.number(),
+    successful: v.number(),
+    skipped: v.number(),
+    errors: v.number(),
+    durationMs: v.number(),
+  }),
+  handler: async (ctx, args): Promise<{ totalCards: number; attemptedStatements: number; successful: number; skipped: number; errors: number; durationMs: number; }> => {
+    return await ctx.runAction(
+      internal.migrations.cardStatementsBackfill.backfillAllCardStatements,
+      args
+    );
+  },
+});

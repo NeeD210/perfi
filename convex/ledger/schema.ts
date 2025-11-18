@@ -95,7 +95,8 @@ export const ledgerSchema = {
     deletedAt: v.optional(v.number()),
   })
     .index("by_accountId", ["accountId"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"]) 
+    .index("by_closingDay", ["closingDay"]),
 
   // Debt metadata
   debts: defineTable({

@@ -186,7 +186,8 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
   })
     .index("by_accountId", ["accountId"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"]) 
+    .index("by_closingDay", ["closingDay"]),
 
   debts: defineTable({
     accountId: v.id("accounts"), // PK & FK

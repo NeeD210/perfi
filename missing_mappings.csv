@@ -1,0 +1,84 @@
+Expense ID,Description,Amount,Date,Category,Transaction Type
+jx7f5f6f3sj91g1gq8p8vsxpns7s40xz,"Varios",6400,2025-10-09T21:24:57.544Z,Ocio,expense
+jx79arnhexyc2zbznqjt3e06ts7s7spv,"Despedida",27650,2025-10-10T02:03:34.052Z,Ocio,expense
+jx746spyfwnyd72dr6w4bj8p1h7s6w48,"Porrito",35000,2025-10-10T22:39:17.183Z,Sus,expense
+jx78tf4mvtppqhytgwj7njpazh7s6w7j,"Nada con juan y lucas",28750,2025-10-10T22:39:35.776Z,Ocio,expense
+jx7em6hc681r8sng5y5rsw2p1s7s8reh,"Pizza y birra",13560,2025-10-11T00:32:05.400Z,Delivery,expense
+jx7dhtw3yv89x0f3w8hq9k19q97s9zg5,"Uber de after",4250,2025-10-11T21:07:33.045Z,Transporte,expense
+jx7b2390dtdx34w9gma0nyycm57s99yz,"Previa nada con juan",10290,2025-10-10T03:00:00.000Z,Ocio,expense
+jx7c3s318hmwz4e05bn0c96jw17sb36y,"Rappi turbo",12390,2025-10-12T18:43:57.453Z,Delivery,expense
+jx7a59jtk926vz6dgstb92z6217sdbwq,"Karaoke",8715,2025-10-13T19:31:31.380Z,Ocio,expense
+jx77jxysebkm6nzyhreyypkd1h7sfwna,"Regalo dia de la madre",28400,2025-10-14T21:50:32.470Z,Otras,expense
+jx7e6v07mtk30a47zbk5dyj7t17sf4r8,"Birras",2400,2025-10-14T23:37:09.802Z,Sus,expense
+jx755mpeckd5txdfzzdb9qgcz97shvjj,"Rappi envios",2478,2025-10-15T00:59:34.545Z,Delivery,expense
+jx7cwj959364y9r9acb09ajn417sg9zk,"Sube",5000,2025-10-15T21:17:24.178Z,Transporte,expense
+jx77ad2ryhwa5t7rh1ybzwgmes7shykt,"Merienda",2200,2025-10-15T21:59:19.831Z,Consumibles (super, carniceria, verduleria).,expense
+jx7ach0rzn7xecwxz2q3yhpd7d7skx9v,"Pan dulce",4500,2025-10-16T12:29:02.731Z,Consumibles (super, carniceria, verduleria).,expense
+jx72bvt6bcxdfxd3j7j2b74eqh7snb14,"Cena",7300,2025-10-17T00:37:30.380Z,Consumibles (super, carniceria, verduleria).,expense
+jx74cpzcaga1cvp86rw38enc857sqp91,"Cursor",28000,2025-10-17T12:00:00.000Z,Servicios,expense
+jx70d7pggpfrf3m1x5y65bb1fx7spmbr,"Bar con los chicos",23050,2025-10-18T05:20:27.624Z,Ocio,expense
+jx7exn78tzmrc2hf9e5cfda4sd7srpb8,"Carrefour",3164,2025-10-19T20:53:40.256Z,Consumibles (super, carniceria, verduleria).,expense
+jx7ff6as7bpxb5eszgnapa5fdh7srdy3,"Cumple mili + gonza",54500,2025-10-18T03:00:00.000Z,Ocio,expense
+jx71yyqzjmxat4amh9xmgnkeph7sr3j3,"Reintegro juan",4000,2025-10-18T03:00:00.000Z,Reintegro,income
+jx7es8mv76tmf44q34d871062d7ssa4g,"Reintegro cami",16250,2025-10-19T23:44:00.600Z,Reintegro,income
+jx71a2hq445svbfyfg3nrh7aah7svz60,"Cena con mama",30000,2025-10-20T02:10:51.683Z,Ocio,expense
+jx7dhepnc4t6gk011pp83v8vdh7swcax,"Alquiler",542000,2025-10-01T03:00:00.000Z,Vivienda,expense
+jx708pz9v9561v8ewwac8qp5y57swv6y,"Cancelacion de deuda",241205,2025-10-21T19:38:28.623Z,Credito,expense
+jx7evn4trxzb3hyfc4wg2xqyz97sxghc,"Regalo fausto",56390,2025-10-21T19:58:55.349Z,Otras,expense
+jx73aj50jtp0kykj81nj3bvr697szk5w,"Spotify",3390,2025-10-21T12:00:00.000Z,Servicios,expense
+jx7543smp68zsrentjabzpfmxn7syfe0,"Cena",14812,2025-10-22T00:13:31.570Z,Delivery,expense
+jx7atwsw9fgwwh5mhe4wesfwp57sy3pc,"Desayuno",3930,2025-10-22T13:28:03.120Z,Delivery,expense
+jx795tbcj6ss1mjbnj8fbm3y6n7t0r1p,"Telecentro",43300,2025-10-22T12:00:00.000Z,Servicios,expense
+jx721v9tfkfa0ejd7bd0gs300n7t108z,"Pizza",11052,2025-10-23T00:03:15.258Z,Delivery,expense
+jx74k46k2bexthd0s31spa94f17t0757,"Didi",5630,2025-10-23T23:56:00.645Z,Transporte,expense
+jx7fhaneqg2ffvz6ztt6veeyxn7t2n0g,"Youtube premium",3600,2025-10-23T12:00:00.000Z,Servicios,expense
+jx73x84agdhh7gth4pb79z0y4n7t5e9r,"Vorterix con gabo",32800,2025-10-23T03:00:00.000Z,Ocio,expense
+jx74nqhxz1xfhaqczrx8h0hb9h7t7xdx,"Rappi",5980,2025-10-26T00:54:25.942Z,Delivery,expense
+jx738cyq6ek5ckrh8cz07z3h617t7hf8,"Fernet vorterix",14000,2025-10-23T03:00:00.000Z,Ocio,expense
+jx7am08v303mdt8rxdhy258fa97t7a54,"Reintegro cande regalos",43800,2025-10-26T12:30:40.606Z,Reintegro,income
+jx7968c4603haqskka3j0h5hz97t87pr,"Seguro",6382,2025-10-26T12:00:00.000Z,Vivienda,expense
+jx76c9vv52r59hzwx1xz0b5sps7t9f8p,"Dia de eatudio mant",7866,2025-10-27T01:11:16.426Z,Ocio,expense
+jx77nr5wtez4bfj6am7dq2zsn17t8cjd,"Birras",5812,2025-10-27T02:11:30.083Z,Delivery,expense
+jx766b3jzpp8ek95k6g8d1kv417t8pt9,"Tabaco",4400,2025-10-27T20:00:50.401Z,Sus,expense
+jx7dapsecnggxstfdhedk7w8g57t9283,"Ropa verano",117706,2025-10-27T23:00:37.544Z,Ropa,expense
+jx725z0wdfbxg8asdhr6439xqh7t9tpn,"Carrefour",3340,2025-10-27T23:19:47.109Z,Consumibles (super, carniceria, verduleria).,expense
+jx72k0ddkdff03x6ns2eg1f7dh7ta02w,"Didi",4000,2025-10-28T20:39:30.645Z,Transporte,expense
+jx71eyrmk76jtgd67hs2gn4r397tdnnx,"Chino",4300,2025-10-29T01:36:57.335Z,Consumibles (super, carniceria, verduleria).,expense
+jx71t55gwzwr0h0rjf7vr0qmkd7tc9k7,"RES Carne",28324,2025-10-29T01:37:50.144Z,Consumibles (super, carniceria, verduleria).,expense
+jx7d8gseh9w0f9q9bxyk81naqn7tcd7n,"Adaptador alexa",1800,2025-10-29T01:38:10.740Z,Otras,expense
+jx748ryb3z4rgh9nqy0659x3cd7td12s,"Peluqueria",20000,2025-10-29T01:38:33.545Z,Servicios,expense
+jx759swe38e283ect5by6wxh317tg7r1,"La continental",12650,2025-10-31T19:35:48.945Z,Consumibles (super, carniceria, verduleria).,expense
+jx77d1kscheaksr3apf3vz7vdx7tjet0,"Google drive",4500,2025-10-31T12:00:00.000Z,Servicios,expense
+jx70hk1j8d8zghg057s7xbyhjh7tjrgz,"Birras",6889,2025-11-01T16:00:25.135Z,Sus,expense
+jx764pzd5qmp35ymztgrpwyaxs7tkfg2,"Rappi fideos y coca",10780,2025-11-01T16:28:17.287Z,Consumibles (super, carniceria, verduleria).,expense
+jx79jz7n0wsnhqq573t6wjsvd57tkh9b,"Panaderia",7700,2025-11-01T20:46:25.889Z,Consumibles (super, carniceria, verduleria).,expense
+jx72dwh8jkpbp6b770azadc6y57tnhrd,"Rappi pro",5500,2025-11-01T12:00:00.000Z,Delivery,expense
+jx7b8fgat8yheng3fpmz406p2d7tmpj0,"Metrogas",16813,2025-11-01T12:00:00.000Z,Vivienda,expense
+jx7apcz4hscfzzeq7zge83cbb57tmkex,"Abl",14100,2025-11-01T12:00:00.000Z,Vivienda,expense
+jx79n99gtp6byhcegpsrkww8zx7tmyv4,"Alquiler",542864,2025-11-01T12:00:00.000Z,Vivienda,expense
+jx7etyq899sa4zfpnn2s8592yh7tqc73,"Sueldo",2177000,2025-11-02T12:00:00.000Z,Sueldo,income
+jx76fncxms29va5rnxe5hte19x7tsz46,"Chino",11215,2025-11-04T16:03:28.758Z,Consumibles (super, carniceria, verduleria).,expense
+jx74zaehptjck4v9ddqwzrv2ws7ts71z,"Piedritas",4900,2025-11-04T23:50:06.232Z,Mascotas,expense
+jx7atha6qtzhpdm6c07nh42n597ttgvp,"Expensas",159360,2025-11-04T12:00:00.000Z,Vivienda,expense
+jx7fv069wmktqxwfx2pk5wcksh7ttyvc,"Props tesis",8929,2025-11-05T00:54:50.348Z,Educación,expense
+jx7fwd8qr8n4zxfat91cqfat3n7ttp77,"After office",71200,2025-11-05T23:20:36.626Z,Ocio,expense
+jx7fsvn1kgj3gmvtxmqhmprsz97tvnc9,"Reintegro after",52800,2025-11-05T23:43:34.758Z,Reintegro,income
+jx7d2wfq9n849nn2x3bva5z0c17tyg2z,"Cena",16200,2025-11-07T00:46:55.666Z,Delivery,expense
+jx76esy8www4tc92m0b9j30ma97v1yqv,"5g porrito",57000,2025-11-08T20:29:34.608Z,Sus,expense
+jx7fwbth0fbm9rhhekkrceec8n7v1fge,"Didi",3024,2025-11-08T20:37:56.596Z,Transporte,expense
+jx7c36w0cc2k7ysbfcrbndve3d7v29s5,"Mc ezeiza",5700,2025-11-09T00:13:08.300Z,Otras,expense
+jx7dsv3pmtnjcwwyhzwc35gbfx7v4551,"Torta cumple",36450,2025-11-10T11:53:28.158Z,Otras,expense
+jx76fvqpw3pnntfwjg62v22qfh7v6snx,"Chino",23250,2025-11-11T15:53:08.024Z,Consumibles (super, carniceria, verduleria).,expense
+jx767sh8fww9fzyngk0faeq2117vbpew,"Cumple mama",39815,2025-11-13T01:24:08.640Z,Ocio,expense
+jx7erxx45m2vyc9wqhcnvch41h7vb8hv,"Uber cande",2542,2025-11-13T01:48:16.204Z,Otras,expense
+jx78a0577wkgzrmemh83f1shb97vadry,"Tesis",9375,2025-11-13T12:37:04.929Z,Educación,expense
+jx7dh7ws3zfgv9gvkx6rnk2a597vcz25,"Edesur",12681,2025-11-14T23:01:28.488Z,Servicios,expense
+jx73rncx0t9cx3ac550xknra097vezh6,"Uber para mate",15276,2025-11-15T01:28:41.850Z,Otras,expense
+jx7bjpm80vwk86raspb82na3zd7vgnhm,"Reintegro uber mate",15276,2025-11-14T03:00:00.000Z,Reintegro,income
+jx7bt0zrz806hr1e6tnvrpqvqs7vhh74,"Uber fantassia",7100,2025-11-16T00:38:13.891Z,Transporte,expense
+jx7fmc3qfzcth9cfh4kbdvmrpn7vgr8z,"Fantassia",45000,2025-11-16T00:38:43.838Z,Ocio,expense
+jx741a7p6aefsx0vge8k0c5sd17vge6j,"Rappi fantassia",11800,2025-11-16T00:40:13.874Z,Ocio,expense
+jx73gmtfh3zsqz2xpbejdgtkxn7vhyem,"Cumple don gato",34000,2025-11-16T19:14:17.084Z,Ocio,expense
+jx71nf7cmk3ft7dg4r9e8j29557vkec9,"Comida y quitapelos",21700,2025-11-17T20:37:30.819Z,Mascotas,expense
+jx7er7z8nf51g0f49p25fgezpd7vnkga,"Cursor",28000,2025-11-17T12:00:00.000Z,Servicios,expense
+jx71vzq52sw00q9qeys8e07ea57vnzrp,"Compra amazon",180200,2025-11-18T12:22:19.586Z,Hogar y electrónica,expense

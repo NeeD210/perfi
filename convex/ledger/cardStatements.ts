@@ -17,7 +17,7 @@
 
 import { internalMutation, internalQuery, internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { Id, Doc } from "../_generated/dataModel";
+import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { logDualWriteError } from "./errorTracking";
 
@@ -38,8 +38,9 @@ function getStartOfDay(timestamp: number): number {
  * Get the start of a month (1st day 00:00:00 UTC) for a given timestamp
  */
 function getMonthStart(timestamp: number): number {
-  const date = new Date(timestamp);
-  return new Date(date.getFullYear(), date.getMonth(), 1).getTime();
+  const d = new Date(timestamp);
+  // Construct UTC month start to avoid local timezone skew
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0);
 }
 
 /**
@@ -124,6 +125,86 @@ export const getClosingDateExchangeRate = internalQuery({
   },
 });
 
+// Insert: generalized conversion rate lookup with optional ARS pivot
+export const getClosingDateConversionRate = internalQuery({
+  args: {
+    fromCurrency: v.string(),
+    toCurrency: v.string(),
+    closingDate: v.number(),
+  },
+  returns: v.object({
+    rate: v.number(),
+    rateId: v.optional(v.id("exchange_rates")),
+  }),
+  handler: async (ctx, args) => {
+    if (args.fromCurrency === args.toCurrency) {
+      return { rate: 1.0 };
+    }
+
+    const day = getStartOfDay(args.closingDate);
+
+    // Try direct pair first
+    const directPair = `${args.fromCurrency}/${args.toCurrency}`;
+    let direct = await ctx.db
+      .query("exchange_rates")
+      .withIndex("by_pair_date_source", (q) => q.eq("pairCurrency", directPair).eq("date", day))
+      .first();
+    if (!direct) {
+      direct = await ctx.db
+        .query("exchange_rates")
+        .withIndex("by_pair_date_source", (q) => q.eq("pairCurrency", directPair))
+        .order("desc")
+        .first();
+    }
+    if (direct) {
+      return { rate: direct.rate, rateId: direct._id };
+    }
+
+    // Pivot via ARS pairs as a fallback
+    let r1 = 1.0; // from -> ARS
+    let r2 = 1.0; // ARS -> to
+
+    if (args.fromCurrency !== "ARS") {
+      const pair1 = `${args.fromCurrency}/ARS`;
+      let p1 = await ctx.db
+        .query("exchange_rates")
+        .withIndex("by_pair_date_source", (q) => q.eq("pairCurrency", pair1).eq("date", day))
+        .first();
+      if (!p1) {
+        p1 = await ctx.db
+          .query("exchange_rates")
+          .withIndex("by_pair_date_source", (q) => q.eq("pairCurrency", pair1))
+          .order("desc")
+          .first();
+      }
+      if (p1) r1 = p1.rate;
+    }
+
+    if (args.toCurrency !== "ARS") {
+      const pair2 = `ARS/${args.toCurrency}`;
+      let p2 = await ctx.db
+        .query("exchange_rates")
+        .withIndex("by_pair_date_source", (q) => q.eq("pairCurrency", pair2).eq("date", day))
+        .first();
+      if (!p2) {
+        p2 = await ctx.db
+          .query("exchange_rates")
+          .withIndex("by_pair_date_source", (q) => q.eq("pairCurrency", pair2))
+          .order("desc")
+          .first();
+      }
+      if (p2) r2 = p2.rate;
+    }
+
+    if (r1 !== 1.0 || r2 !== 1.0) {
+      return { rate: r1 * r2 };
+    }
+
+    console.warn(`No conversion rate found for ${args.fromCurrency}->${args.toCurrency} on ${new Date(args.closingDate).toISOString()}, using 1.0`);
+    return { rate: 1.0 };
+  },
+});
+
 /**
  * Get user's main asset account for settlement fallback
  */
@@ -174,19 +255,17 @@ export const getCardsWithClosingToday = internalQuery({
     createdAt: v.number(),
   })),
   handler: async (ctx) => {
-    const today = new Date();
-    const todayDay = today.getUTCDate();
-    
+    const todayDay = new Date().getUTCDate();
+
+    // Use indexed query for closingDay and filter active cards
     const cards = await ctx.db
       .query("cards")
-      .filter((q) => 
-        q.eq(q.field("softdelete"), false) &&
-        q.eq(q.field("closingDay"), todayDay)
-      )
+      .withIndex("by_closingDay", (q) => q.eq("closingDay", todayDay))
+      .filter((q) => q.eq(q.field("softdelete"), false))
       .collect();
 
     return cards
-      .filter(card => card.baseCurrency && card.createdAt) // Only include cards with required fields
+      .filter(card => card.baseCurrency && card.createdAt)
       .map(card => ({
         _id: card._id,
         accountId: card.accountId,
@@ -318,7 +397,6 @@ export const calculateStatement = internalMutation({
 
       // 4. Calculate statement total using rollups or fallback
       let totalAmount = 0;
-      let closingDateRate: { rate: number; rateId?: Id<"exchange_rates"> } | undefined;
       
       // Try rollup first (fast path)
       const monthStart = getMonthStart(periodStart);
@@ -344,20 +422,29 @@ export const calculateStatement = internalMutation({
           )
           .collect();
 
-        // Get exchange rate for closing date (user-modifiable)
-        closingDateRate = await ctx.runQuery(internal.ledger.cardStatements.getClosingDateExchangeRate, {
-          baseCurrency: card.baseCurrency,
-          closingDate: args.closingDate,
-        });
+        // Precompute conversion rates per unique currency (excluding base currency)
+        const uniqueCurrencies = Array.from(
+          new Set(lines.map((l) => l.currencyCode).filter((c) => c !== card.baseCurrency))
+        );
+        const currencyToRate = new Map<string, number>();
+        for (const curr of uniqueCurrencies) {
+          const resp = await ctx.runQuery(internal.ledger.cardStatements.getClosingDateConversionRate, {
+            fromCurrency: curr,
+            toCurrency: card.baseCurrency,
+            closingDate: args.closingDate,
+          });
+          currencyToRate.set(curr, resp.rate);
+        }
 
-        // Convert all transactions to card's base currency using closing date rate
+        // Convert all transactions to card's base currency using per-currency rates
         for (const line of lines) {
           if (line.direction === "credit") {
+            const rate = line.currencyCode === card.baseCurrency ? 1 : (currencyToRate.get(line.currencyCode) ?? 1);
             const convertedAmount = convertAmount(
               line.amount,
               line.currencyCode,
               card.baseCurrency,
-              closingDateRate.rate
+              rate
             );
             totalAmount += convertedAmount;
           }
@@ -372,7 +459,7 @@ export const calculateStatement = internalMutation({
         dueDate.setUTCMonth(dueDate.getUTCMonth() + 1);
       }
 
-      // 6. Store statement with exchange rate information
+      // 6. Store statement (exchange rate fields omitted due to per-currency conversions)
       const statementId = await ctx.db.insert("card_statements", {
         accountId: args.cardAccountId,
         userId: card.userId,
@@ -382,8 +469,6 @@ export const calculateStatement = internalMutation({
         dueDate: dueDate.getTime(),
         totalAmount,
         currencyCode: card.baseCurrency,
-        exchangeRate: closingDateRate?.rate,
-        exchangeRateId: closingDateRate?.rateId,
         status: "pending",
         idempotencyKey,
         createdAt: Date.now(),

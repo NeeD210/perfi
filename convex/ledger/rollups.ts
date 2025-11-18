@@ -27,7 +27,7 @@ import { internal } from "../_generated/api";
  */
 function getMonthStart(timestamp: number): number {
   const date = new Date(timestamp);
-  return new Date(date.getFullYear(), date.getMonth(), 1).getTime();
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0);
 }
 
 /**
@@ -35,7 +35,7 @@ function getMonthStart(timestamp: number): number {
  */
 function getMonthEnd(timestamp: number): number {
   const date = new Date(timestamp);
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 23, 59, 59, 999);
 }
 
 /**
@@ -43,7 +43,7 @@ function getMonthEnd(timestamp: number): number {
  */
 function getNextMonthStart(timestamp: number): number {
   const date = new Date(timestamp);
-  return new Date(date.getFullYear(), date.getMonth() + 1, 1).getTime();
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1, 0, 0, 0, 0);
 }
 
 // ============================================================================
@@ -519,7 +519,7 @@ export const reconcileMonthlyRollups = internalAction({
         
         // Process batch in parallel
         const results = await Promise.allSettled(
-          batch.map(account => reconcileAccountRollups(ctx, account))
+          batch.map((account: { _id: Id<"accounts">; userId: Id<"users">; description: string; accountType: string; softdelete: boolean }) => reconcileAccountRollups(ctx, account))
         );
         
         // Count results
