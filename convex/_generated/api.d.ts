@@ -16,6 +16,8 @@ import type {
 import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
 import type * as diagnostics_cardInspection from "../diagnostics/cardInspection.js";
+import type * as diagnostics_cardStatementDiagnostics from "../diagnostics/cardStatementDiagnostics.js";
+import type * as diagnostics_checkStatement from "../diagnostics/checkStatement.js";
 import type * as diagnostics from "../diagnostics.js";
 import type * as env from "../env.js";
 import type * as expenses from "../expenses.js";
@@ -39,6 +41,7 @@ import type * as ledger_exchangeRates from "../ledger/exchangeRates.js";
 import type * as ledger_fetchHistoricalRates from "../ledger/fetchHistoricalRates.js";
 import type * as ledger_fetchLiveRates from "../ledger/fetchLiveRates.js";
 import type * as ledger_fx from "../ledger/fx.js";
+import type * as ledger_home from "../ledger/home.js";
 import type * as ledger_index from "../ledger/index.js";
 import type * as ledger_monthlySummary from "../ledger/monthlySummary.js";
 import type * as ledger_rateMonitoring from "../ledger/rateMonitoring.js";
@@ -49,7 +52,6 @@ import type * as ledger_testCardStatements from "../ledger/testCardStatements.js
 import type * as ledger_transfers from "../ledger/transfers.js";
 import type * as ledger_types from "../ledger/types.js";
 import type * as ledger_validators from "../ledger/validators.js";
-import type * as ledger_verification from "../ledger/verification.js";
 import type * as lib_scheduling from "../lib/scheduling.js";
 import type * as migrations_accountSeeding from "../migrations/accountSeeding.js";
 import type * as migrations_backfillIsCredit from "../migrations/backfillIsCredit.js";
@@ -91,6 +93,8 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   crons: typeof crons;
   "diagnostics/cardInspection": typeof diagnostics_cardInspection;
+  "diagnostics/cardStatementDiagnostics": typeof diagnostics_cardStatementDiagnostics;
+  "diagnostics/checkStatement": typeof diagnostics_checkStatement;
   diagnostics: typeof diagnostics;
   env: typeof env;
   expenses: typeof expenses;
@@ -114,6 +118,7 @@ declare const fullApi: ApiFromModules<{
   "ledger/fetchHistoricalRates": typeof ledger_fetchHistoricalRates;
   "ledger/fetchLiveRates": typeof ledger_fetchLiveRates;
   "ledger/fx": typeof ledger_fx;
+  "ledger/home": typeof ledger_home;
   "ledger/index": typeof ledger_index;
   "ledger/monthlySummary": typeof ledger_monthlySummary;
   "ledger/rateMonitoring": typeof ledger_rateMonitoring;
@@ -124,7 +129,6 @@ declare const fullApi: ApiFromModules<{
   "ledger/transfers": typeof ledger_transfers;
   "ledger/types": typeof ledger_types;
   "ledger/validators": typeof ledger_validators;
-  "ledger/verification": typeof ledger_verification;
   "lib/scheduling": typeof lib_scheduling;
   "migrations/accountSeeding": typeof migrations_accountSeeding;
   "migrations/backfillIsCredit": typeof migrations_backfillIsCredit;

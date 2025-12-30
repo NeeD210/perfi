@@ -255,14 +255,61 @@ export const getCardsWithClosingToday = internalQuery({
     createdAt: v.number(),
   })),
   handler: async (ctx) => {
-    const todayDay = new Date().getUTCDate();
+    const now = new Date();
+    const todayDay = now.getUTCDate();
+    const todayYear = now.getUTCFullYear();
+    const todayMonth = now.getUTCMonth();
+    
+    // Get last day of current month
+    const lastDayOfMonth = new Date(Date.UTC(todayYear, todayMonth + 1, 0)).getUTCDate();
+    const isLastDayOfMonth = todayDay === lastDayOfMonth;
 
     // Use indexed query for closingDay and filter active cards
-    const cards = await ctx.db
+    // If today is the last day of the month, also include cards with closingDay > lastDayOfMonth (e.g., 31)
+    let cards = await ctx.db
       .query("cards")
       .withIndex("by_closingDay", (q) => q.eq("closingDay", todayDay))
       .filter((q) => q.eq(q.field("softdelete"), false))
       .collect();
+
+    // If today is the last day of the month, also get cards with closingDay > lastDayOfMonth
+    // These cards should close on the last day of the month (e.g., closingDay 31 in November closes on Nov 30)
+    if (isLastDayOfMonth) {
+      const additionalCards = await ctx.db
+        .query("cards")
+        .filter((q) => 
+          q.and(
+            q.eq(q.field("softdelete"), false),
+            q.gt(q.field("closingDay"), lastDayOfMonth),
+            q.lte(q.field("closingDay"), 31)
+          )
+        )
+        .collect();
+      
+      // Merge and deduplicate by accountId
+      const existingAccountIds = new Set(cards.map(c => c.accountId));
+      const newCards = additionalCards.filter(c => !existingAccountIds.has(c.accountId));
+      cards = [...cards, ...newCards];
+      
+      if (newCards.length > 0) {
+        console.log(
+          `[Card Statement Processing] Found ${newCards.length} additional cards with closingDay > ${lastDayOfMonth} (will close on last day of month)`
+        );
+      }
+    }
+
+    // Log cards that are filtered out due to missing required fields
+    const filteredOut = cards.filter(card => !card.baseCurrency || !card.createdAt);
+    if (filteredOut.length > 0) {
+      console.warn(
+        `[Card Statement Processing] Filtered out ${filteredOut.length} cards missing required fields:`,
+        filteredOut.map(c => ({
+          accountId: c.accountId,
+          missingBaseCurrency: !c.baseCurrency,
+          missingCreatedAt: !c.createdAt,
+        }))
+      );
+    }
 
     return cards
       .filter(card => card.baseCurrency && card.createdAt)
@@ -395,62 +442,47 @@ export const calculateStatement = internalMutation({
         periodStart = lastStatement.closingDate;
       }
 
-      // 4. Calculate statement total using rollups or fallback
+      // 4. Calculate statement total using line-by-line calculation
       let totalAmount = 0;
       
-      // Try rollup first (fast path)
-      const monthStart = getMonthStart(periodStart);
-      const rollup = await ctx.db
-        .query("monthly_rollups")
-        .withIndex("by_account_month", (q) =>
-          q.eq("accountId", args.cardAccountId).eq("month", monthStart)
+      // Fall back to line-by-line calculation with closing date exchange rate
+      const lines = await ctx.db
+        .query("journal_lines")
+        .withIndex("by_accountId_date", (q) =>
+          q.eq("accountId", args.cardAccountId)
+           .gte("entryDate", periodStart)
+           .lte("entryDate", periodEnd)
         )
-        .first();
+        .collect();
 
-      if (rollup) {
-        // Use rollup data for the month
-        totalAmount = rollup.totalCredits; // Credits to card = charges
-        console.log(`Using rollup for statement calculation: ${totalAmount}`);
-      } else {
-        // Fall back to line-by-line calculation with closing date exchange rate
-        const lines = await ctx.db
-          .query("journal_lines")
-          .withIndex("by_accountId_date", (q) =>
-            q.eq("accountId", args.cardAccountId)
-             .gte("entryDate", periodStart)
-             .lte("entryDate", periodEnd)
-          )
-          .collect();
-
-        // Precompute conversion rates per unique currency (excluding base currency)
-        const uniqueCurrencies = Array.from(
-          new Set(lines.map((l) => l.currencyCode).filter((c) => c !== card.baseCurrency))
-        );
-        const currencyToRate = new Map<string, number>();
-        for (const curr of uniqueCurrencies) {
-          const resp = await ctx.runQuery(internal.ledger.cardStatements.getClosingDateConversionRate, {
-            fromCurrency: curr,
-            toCurrency: card.baseCurrency,
-            closingDate: args.closingDate,
-          });
-          currencyToRate.set(curr, resp.rate);
-        }
-
-        // Convert all transactions to card's base currency using per-currency rates
-        for (const line of lines) {
-          if (line.direction === "credit") {
-            const rate = line.currencyCode === card.baseCurrency ? 1 : (currencyToRate.get(line.currencyCode) ?? 1);
-            const convertedAmount = convertAmount(
-              line.amount,
-              line.currencyCode,
-              card.baseCurrency,
-              rate
-            );
-            totalAmount += convertedAmount;
-          }
-        }
-        console.log(`Using line-by-line calculation for statement: ${totalAmount}`);
+      // Precompute conversion rates per unique currency (excluding base currency)
+      const uniqueCurrencies = Array.from(
+        new Set(lines.map((l) => l.currencyCode).filter((c) => c !== card.baseCurrency))
+      );
+      const currencyToRate = new Map<string, number>();
+      for (const curr of uniqueCurrencies) {
+        const resp = await ctx.runQuery(internal.ledger.cardStatements.getClosingDateConversionRate, {
+          fromCurrency: curr,
+          toCurrency: card.baseCurrency,
+          closingDate: args.closingDate,
+        });
+        currencyToRate.set(curr, resp.rate);
       }
+
+      // Convert all transactions to card's base currency using per-currency rates
+      for (const line of lines) {
+        if (line.direction === "credit") {
+          const rate = line.currencyCode === card.baseCurrency ? 1 : (currencyToRate.get(line.currencyCode) ?? 1);
+          const convertedAmount = convertAmount(
+            line.amount,
+            line.currencyCode,
+            card.baseCurrency,
+            rate
+          );
+          totalAmount += convertedAmount;
+        }
+      }
+      console.log(`Using line-by-line calculation for statement: ${totalAmount}`);
 
       // 5. Calculate due date
       const dueDate = new Date(periodEnd);
@@ -707,9 +739,20 @@ export const processClosingStatements = internalAction({
       console.log(`[Card Statement Processing] Found ${total} cards with closing day today`);
 
       // 2. Process each card
+      const now = Date.now();
+      const nowDate = new Date(now);
+      const todayDay = nowDate.getUTCDate();
+      const todayYear = nowDate.getUTCFullYear();
+      const todayMonth = nowDate.getUTCMonth();
+      const lastDayOfMonth = new Date(Date.UTC(todayYear, todayMonth + 1, 0)).getUTCDate();
+      
       for (const card of cards) {
         try {
-          const closingDate = getStartOfDay(Date.now());
+          // If card's closingDay is greater than last day of month, use last day of month as closing date
+          // (e.g., closingDay 31 in November should close on November 30th)
+          const actualClosingDay = Math.min(card.closingDay, lastDayOfMonth);
+          const closingDate = Date.UTC(todayYear, todayMonth, actualClosingDay, 0, 0, 0, 0);
+          
           await ctx.runMutation(internal.ledger.cardStatements.calculateStatement, {
             cardAccountId: card.accountId,
             closingDate,

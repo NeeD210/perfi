@@ -4,16 +4,18 @@ This document provides an overview of the PerFi (Personal Finance) application, 
 
 ## Current Project Status
 
-**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project has successfully completed **Phase 1-4.4 of the Accounting Ledger System** implementation. The application features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables (production deployment: January 8, 2025), includes a complete account-to-account transfer system with cross-currency support (completed: October 11, 2025), has a comprehensive flexible budget system with real-time execution tracking (completed and deployed to production: October 12, 2025), includes budget historical tracking with automated period rollover (completed: January 15, 2025), and now features a pre-aggregation system with monthly rollups for performance optimization (completed: January 15, 2025). Current focus: Phase 4.5 UI Integration and Phase 5 Card Settlement.
+**PerFi** is a comprehensive personal finance tracking application built with modern technologies. The project has successfully completed **Phases 1-5 of the Accounting Ledger System** implementation. The application features a complete double-entry bookkeeping system with dual-write synchronization between legacy and ledger tables (production deployment: January 8, 2025), includes a complete account-to-account transfer system with cross-currency support (completed: October 11, 2025), has a comprehensive flexible budget system with real-time execution tracking (completed and deployed to production: October 12, 2025), includes budget historical tracking with automated period rollover (completed: January 15, 2025), features a pre-aggregation system with monthly rollups for performance optimization (completed: January 15, 2025), includes real-time exchange rate integration with multiple API providers (Phase 3.5), and now has automated card statement calculation and settlement posting (Phase 5). Current focus: **Phase 6v2 UI Remodel** - a complete page-by-page UI redesign with ledger-first queries.
 
 ### Key Achievements
 - ✅ Complete double-entry accounting ledger system (Phase 1-3)
 - ✅ Production deployment with 100% migration success (353 journal entries, 0 errors)
 - ✅ Dual-write synchronization across all financial operations
+- ✅ **Real-time exchange rate integration with multi-provider fallback (Phase 3.5)**
 - ✅ **Account-to-account transfer system with cross-currency support (Phase 4.1)**
 - ✅ **Flexible budget system with three scope types and real-time execution tracking (Phase 4.2) - PRODUCTION DEPLOYED**
 - ✅ **Budget historical tracking with automated period rollover and cron jobs (Phase 4.3) - COMPLETED**
 - ✅ **Pre-aggregation system with monthly rollups and performance optimization (Phase 4.4) - COMPLETED**
+- ✅ **Automated card statement calculation and settlement posting (Phase 5) - COMPLETED**
 - ✅ Complete transaction management system (expenses/income)
 - ✅ Recurring transaction automation with ledger integration
 - ✅ Installment payment scheduling for credit cards
@@ -399,12 +401,31 @@ The database is managed using Convex and includes the following tables:
     *   `deletedAt`: (Optional Number) Timestamp of soft deletion.
     *   *Index*: `by_accountId` on `accountId`.
 
-*   **`fx_rates`**: Foreign exchange rates for multi-currency support (future).
-    *   `fromCurrency`: (String) Source currency code.
-    *   `toCurrency`: (String) Target currency code.
-    *   `rate`: (Number) Exchange rate.
-    *   `effectiveDate`: (Number) When rate became effective.
-    *   *Index*: `by_currencies_date` on currency pair and date.
+*   **`exchange_rates`**: Real-time exchange rates from multiple API providers (Phase 3.5).
+    *   `pairCurrency`: (String) Currency pair in "BASE/QUOTE" format (e.g., "USD/ARS").
+    *   `rate`: (Number) Exchange rate (scaled integer, base→quote).
+    *   `inverseRate`: (Optional Number) Inverse rate for bidirectional conversion.
+    *   `date`: (Number) Effective date (epoch ms, UTC day boundary).
+    *   `source`: (String) Provider ID (e.g., "exchangerate-api", "currencyapi", "abstractapi").
+    *   *Indexes*: `by_pair_date_source` on currency pair, date, and source; `by_pair_date` for date-specific queries; `by_source_date` for provider-specific queries.
+
+*   **`card_statements`**: Automated card billing statements (Phase 5).
+    *   `accountId`: (ID referencing `accounts`) Card liability account.
+    *   `userId`: (ID referencing `users`) User who owns the card.
+    *   `periodStart`: (Number) Epoch ms of billing period start.
+    *   `periodEnd`: (Number) Epoch ms of billing period end.
+    *   `closingDate`: (Number) Epoch ms of statement closing date.
+    *   `dueDate`: (Number) Epoch ms of payment due date.
+    *   `totalAmount`: (Number) Statement total in minor units.
+    *   `currencyCode`: (String) ISO 4217 currency code.
+    *   `exchangeRate`: (Optional Number) User-modifiable exchange rate.
+    *   `exchangeRateId`: (Optional ID referencing `exchange_rates`) Official rate reference.
+    *   `status`: (String) "pending", "posted", or "paid".
+    *   `settlementEntryId`: (Optional ID referencing `journal_entries`) Settlement entry link.
+    *   `idempotencyKey`: (String) Prevents duplicate statements.
+    *   `createdAt`: (Number) Creation timestamp.
+    *   `updatedAt`: (Number) Last update timestamp.
+    *   *Indexes*: `by_accountId_closingDate`, `by_user_status`, `by_dueDate_status`, `by_idempotencyKey`.
 
 *   **`budgets`**: Budget definitions with flexible scoping (Phase 4.2).
     *   `userId`: (ID referencing `users`) The user who owns this budget.
@@ -621,9 +642,26 @@ The database is managed using Convex and includes the following tables:
 *   **`processRecurringTransactions` (internal action)**: Processes recurring transactions that are due (called by cron jobs).
 
 ### Automated Processing (`convex/crons.ts`)
-*   **Daily Cron Job**: Processes recurring transactions at midnight every day.
+*   **Recurring Transaction Processing**: Daily cron job at midnight processing due recurring transactions.
 *   **Budget Period Rollover**: Automated background job capturing budget execution at period boundaries.
-*   **Rollup Reconciliation**: Daily cron job running at 02:00 UTC to reconcile monthly rollups and ensure consistency.
+*   **Rollup Reconciliation**: Daily cron job at 02:00 UTC reconciling monthly rollups for consistency.
+*   **Card Statement Calculation**: Daily cron job at 01:00 UTC calculating statements for cards with closing day = today.
+*   **Settlement Posting**: Daily cron job at 03:00 UTC posting settlement entries for statements due today.
+
+### Exchange Rate System (`convex/ledger/`)
+*   **`exchangeRates.ts`**: Core exchange rate fetching and caching logic.
+*   **`exchangeRateProviders.ts`**: Multi-provider integration (ExchangeRate-API, CurrencyAPI, AbstractAPI).
+*   **`fetchLiveRates.ts`**: Real-time rate fetching with provider fallback.
+*   **`fetchHistoricalRates.ts`**: Historical rate retrieval for past transactions.
+*   **`rateValidation.ts`**: Rate quality assurance and validation.
+*   **`rateMonitoring.ts`**: Performance and availability monitoring.
+
+### Card Statements System (`convex/ledger/`)
+*   **`cardStatements.ts`**: Card statement calculation and settlement posting.
+    *   `calculateStatement`: Calculate statement total from journal_lines in billing period.
+    *   `createStatement`: Create statement record with idempotency.
+    *   `postSettlement`: Create settlement journal entry on due date.
+    *   `listStatements`: Query statements by card, status, or date range.
 
 ### Ledger System (`convex/ledger/`)
 *   **`dualWriteUtils.ts`**: Utilities for dual-write operations to ledger system.
@@ -631,6 +669,8 @@ The database is managed using Convex and includes the following tables:
 *   **`errorTracking.ts`**: Structured error logging for dual-write failures with monitoring integration support.
 *   **`accounts.ts`**: Account management utilities for chart of accounts.
 *   **`fx.ts`**: Foreign exchange rate utilities for multi-currency support.
+*   **`types.ts`**: TypeScript type definitions for ledger operations.
+*   **`validators.ts`**: Convex validators for account types, directions, statuses, and frequencies.
 
 ### Migrations (`convex/migrations/`)
 *   **Phase 1 - Foundation:**
@@ -868,16 +908,18 @@ The application features a complete double-entry bookkeeping system with dual-wr
 
 ### Current Implementation Status:
 
-**✅ Completed Features (Phases 1-4.4):**
+**✅ Completed Features (Phases 1-5):**
 - ✅ Double-entry accounting ledger system with production deployment
 - ✅ Complete dual-write synchronization (legacy ↔ ledger)
 - ✅ Historical data migration (100% success rate)
 - ✅ Chart of accounts with automatic creation
 - ✅ Journal entries with zero-sum validation
+- ✅ **Real-time exchange rate integration with multi-provider fallback (Phase 3.5)**
 - ✅ **Account-to-account transfers with cross-currency support (Phase 4.1)**
 - ✅ **Flexible budget system with three scope types and real-time execution (Phase 4.2)**
 - ✅ **Budget historical tracking with automated period rollover (Phase 4.3)**
-- ✅ **Pre-aggregation system with monthly rollups and performance optimization (Phase 4.4) - COMPLETED**
+- ✅ **Pre-aggregation system with monthly rollups and performance optimization (Phase 4.4)**
+- ✅ **Automated card statement calculation and settlement posting (Phase 5)**
 - ✅ Core transaction management (expenses/income)
 - ✅ Recurring transaction automation with ledger integration
 - ✅ Installment payment scheduling
@@ -889,19 +931,21 @@ The application features a complete double-entry bookkeeping system with dual-wr
 - ✅ Structured error tracking and monitoring foundation
 - ✅ Complete audit trail with user tracking
 
-**🔄 In Progress (Phase 4.5):**
-- 🔄 Phase 4.5: UI Integration (IN PLANNING)
-  - Budget management UI components
-  - Budget execution display in Home dashboard
-  - Transfer creation and history UI
-  - Home dashboard optimization with rollups
+**🔄 In Progress (Phase 6v2):**
+- 🔄 Phase 6v2: UI Remodel (Page-by-Page) with Ledger Integration
+  - Complete UI redesign with modern aesthetics
+  - Ledger-first queries (no legacy table reads)
+  - Unified Transaction Form for Expense/Income/Transfer
+  - Home dashboard with rollup-optimized queries
+  - Transactions list with pagination and filtering
+  - Settings and account management UI
+  - Performance targets: Home < 1s, Transactions < 500ms
 
-**📋 Planned (Phase 5+):**
-- **Phase 5**: Card settlement and credit card statement reconciliation
-- **Phase 6**: UI migration to ledger data (complete read path from journal entries)
+**📋 Planned (Future Phases):**
+- **Onboarding System**: AI-powered financial assessment and personalized strategy generation
 - **Phase 7**: Legacy table deprecation and cleanup
 - **Phase 8**: Multi-currency support enhancements and FX handling
-- **Future**: Advanced features (savings goals, investment tracking, debt prioritization, financial insights)
+- **Future**: Advanced features (savings goals, investment tracking, debt prioritization, financial insights, bank statement import)
 
 ### Production Status
 
@@ -919,43 +963,47 @@ The application features a complete double-entry bookkeeping system with dual-wr
 
 ### Next Steps
 
-**Current Focus: Phase 4.5 UI Integration**
+**Current Focus: Phase 6v2 UI Remodel**
 
-The pre-aggregation system backend implementation is complete and validated with comprehensive testing. Next immediate steps:
+The ledger backend (Phases 1-5) is complete with comprehensive testing. The current focus is a complete UI redesign implemented page-by-page:
 
-1. **UI Integration** (Phase 4.5):
-   - **Budget Management UI**:
-     - Budget creation form with scope type selector
-     - Budget list view with current execution status
-     - Budget detail/edit view with historical tracking
-     - Budget deletion with confirmation
-   - **Transfer UI**:
-     - Transfer creation form with account selection and currency conversion
-     - Transfer history list with filtering
-     - Transfer detail view
-   - **Home Dashboard Optimization**:
-     - Integrate budget execution cards showing progress bars
-     - Display top spending categories using rollup data (5x performance improvement)
-     - Show monthly trends with pre-aggregated data (sub-second load times)
-     - Optimize queries with indexed rollup lookups
-     - Implement staleness detection UI indicators
-     - Add rollup data freshness monitoring
+1. **Sprint 1: Home Dashboard (Week 1-2)**:
+   - Create `convex/ledger/home.ts` with dashboard queries
+   - Build Home UI components (BalanceCard, MonthlySummary, TopCategories, UpcomingPayments)
+   - Rewrite `HomePage.tsx` to use ledger-first queries
+   - Establish design system (colors, typography, spacing)
+   - Target: < 1 second load time
 
-4. **Testing & Documentation**:
-   - Unit tests for budget historical tracking logic
-   - Integration tests for cron job processing
-   - E2E tests for budget UI flows
-   - Unit tests for rollup system (>85% coverage achieved)
-   - Performance benchmarks for rollup-optimized queries
-   - Integration tests for rollup reconciliation and fallback scenarios
-   - Update API documentation with rollup performance improvements
+2. **Sprint 2: Unified Transaction Form (Week 3-4)**:
+   - Create `TransactionForm.tsx` for Expense/Income/Transfer
+   - Add `getAccountsForForm` query
+   - Smart defaults and localStorage persistence
+   - Replace legacy expense/income drawers
+
+3. **Sprint 3: Transactions List (Week 5-6)**:
+   - Create `convex/ledger/transactions.ts` with pagination
+   - Build list UI components with filtering
+   - Rewrite `ManageTransactionsPage.tsx`
+   - Target: < 500ms first page load
+
+4. **Sprint 4: Settings & Account Management (Week 7-8)**:
+   - Create `convex/ledger/settings.ts`
+   - Extend accounts.ts with management mutations
+   - Build settings UI components
+   - Rewrite `ConfigPage.tsx`
+
+**Quality Gates:**
+- >85% unit test coverage for new queries
+- Integration tests for all page data flows
+- No TypeScript errors (strict mode)
+- Lighthouse performance score > 90
+- Accessibility audit passed (WCAG 2.1 AA)
 
 **Future Phases:**
-- **Phase 5**: Card settlement and credit card statement reconciliation
-- **Phase 6**: UI migration to ledger data (complete read path from journal entries)
+- **Onboarding System**: AI-powered financial assessment, personalized budgets, subscription management
 - **Phase 7**: Legacy table deprecation and cleanup
-- **Phase 8**: Multi-currency support enhancements and FX handling
-- **Future**: Advanced features (savings goals, investment tracking, debt prioritization, financial insights)
+- **Phase 8**: Multi-currency support enhancements
+- **Future**: Savings goals, investment tracking, debt prioritization, bank statement import
 
 ## Development Process & Quality Assurance
 
@@ -993,14 +1041,16 @@ Based on comprehensive audit analysis across Phase 4 development journey and Pha
 
 **Reference Documentation:**
 - `planning/accounting.md`: Complete accounting system roadmap
+- `planning/accountingSteps/Phase3.5-ExchangeRatesIntegration.md`: Exchange rates integration specifications
 - `planning/accountingSteps/Phase4.1-TransferImplementation.md`: Transfer system specifications
 - `planning/accountingSteps/Phase4.2-BudgetSystem.md`: Budget system specifications
 - `planning/accountingSteps/Phase4.3-BudgetHistoricalTracking.md`: Budget historical tracking specifications
 - `planning/accountingSteps/Phase4.4-PreAggregationSystem.md`: Pre-aggregation system specifications
 - `planning/accountingSteps/Phase5-Card-Statements-Settlement-PRD.md`: Card statements and settlement specifications
+- `planning/accountingSteps/Phase6v2-UI-Remodel-Page-by-Page.md`: UI remodel specifications (current focus)
+- `planning/onboarding.md`: Onboarding strategy and AI-powered financial assessment
 - `planning/accountingSteps/audits/`: Comprehensive audit reports and process improvements
 - `planning/accountingSteps/process-improvements/`: Process improvement implementation reports
-- `PRODUCTION-DEPLOYMENT-PHASE-4.2.md`: Phase 4.2 production deployment report
-- `docs/PHASE-4.2-TEST-REPORT.md`: Budget system test results
-- `PHASE-4.4-DEV-TEST-REPORT.md`: Phase 4.4 pre-aggregation system test results and validation
+- `debugging/WARP.md`: Development environment guide for WARP terminal
+- `debugging/CRITICAL_ERRORS_GUIDE.md`: Error resolution patterns and debugging guide
 - `docs/`: Implementation documentation and test reports

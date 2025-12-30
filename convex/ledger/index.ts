@@ -68,4 +68,7 @@ export * from "./monthlySummary";
 // Export card statements functions
 export * from "./cardStatements";
 
+// Export home dashboard functions
+export * from "./home";
+
 export * from "./validators";

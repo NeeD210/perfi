@@ -382,3 +382,48 @@ export const backfillAllCardStatements = internalAction({
     );
   },
 });
+
+export const backfillCardStatementsForClosingDay31 = internalAction({
+  args: {
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    totalCards: v.number(),
+    attemptedStatements: v.number(),
+    successful: v.number(),
+    skipped: v.number(),
+    errors: v.number(),
+    durationMs: v.number(),
+  }),
+  handler: async (ctx, args): Promise<{ totalCards: number; attemptedStatements: number; successful: number; skipped: number; errors: number; durationMs: number; }> => {
+    return await ctx.runAction(
+      internal.migrations.cardStatementsBackfill.backfillCardStatementsForClosingDay31,
+      args
+    );
+  },
+});
+
+export const backfillStatementForAccount = internalAction({
+  args: {
+    accountId: v.id("accounts"),
+    year: v.number(),
+    month: v.number(), // 0-11 (0 = January, 11 = December)
+  },
+  returns: v.object({
+    success: v.boolean(),
+    statementId: v.optional(v.id("card_statements")),
+    error: v.optional(v.string()),
+  }),
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    statementId?: Id<"card_statements">;
+    error?: string;
+  }> => {
+    return await ctx.runAction(
+      internal.migrations.cardStatementsBackfill.backfillStatementForAccount,
+      args
+    );
+  },
+});

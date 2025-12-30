@@ -145,7 +145,7 @@ export const getMonthlySummary = query({
         });
         
         if (account.accountType === "income") {
-          totalIncome += rollup.totalCredits;
+          totalIncome += Math.abs(rollup.totalCredits);
         } else if (account.accountType === "expense") {
           totalExpenses += rollup.totalDebits;
         }
@@ -241,7 +241,7 @@ async function calculateMonthlySummaryDirect(
     
     // Sum by account type
     if (account.accountType === "income") {
-      totalIncome += totalCredits;
+      totalIncome += Math.abs(totalCredits);
     } else if (account.accountType === "expense") {
       totalExpenses += totalDebits;
     }
@@ -369,7 +369,7 @@ export const getMonthlySummaryWithStalenessCheck = query({
           });
           
           if (account.accountType === "income") {
-            totalIncome += rollup.totalCredits;
+            totalIncome += Math.abs(rollup.totalCredits);
           } else if (account.accountType === "expense") {
             totalExpenses += rollup.totalDebits;
           }
@@ -573,7 +573,7 @@ export const getMonthlyTrends = query({
           if (!account || !("accountType" in account) || account.accountType === undefined) continue;
           
           if (account.accountType === "income") {
-            totalIncome += rollup.totalCredits;
+            totalIncome += Math.abs(rollup.totalCredits);
           } else if (account.accountType === "expense") {
             totalExpenses += rollup.totalDebits;
           }

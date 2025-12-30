@@ -353,13 +353,14 @@ describe("Phase 4.4: Pre-Aggregation System", () => {
         updateType: "transaction",
       });
 
+      // Income account: credits are stored as negative values (accounting convention)
       await t.runMutation(api.ledger.rollups.upsertMonthlyRollup, {
         userId,
         accountId: accountId2,
         month: currentMonth,
         totalDebits: 0,
-        totalCredits: 15000,
-        netAmount: 15000,
+        totalCredits: -15000, // Negative as stored (credits are negative in amountBaseCurrency)
+        netAmount: -15000, // Negative is correct for income accounts (accounting perspective)
         transactionCount: 3,
         updateType: "transaction",
       });
@@ -370,6 +371,7 @@ describe("Phase 4.4: Pre-Aggregation System", () => {
       });
 
       expect(summary.dataSource).toBe("rollups");
+      // Fix: totalIncome should be positive for display (Math.abs of negative credits)
       expect(summary.totalIncome).toBe(15000);
       expect(summary.totalExpenses).toBe(10000);
       expect(summary.netBalance).toBe(5000);
